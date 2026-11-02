@@ -6,7 +6,7 @@
 #include "Frontend/InkDamageFeedbackComponent.h"
 #include "Frontend/InkProgressState.h"
 #include "Frontend/InkMenuDirector.h"
-#include "Frontend/InkFrontendWidget.h"
+#include "InkUI/InkGameUIWidget.h"
 #include "Cultivation/CultivationSubsystem.h"
 #include "Cultivation/CultivationHealthComponent.h"
 #include "Engine/GameInstance.h"
@@ -59,6 +59,7 @@ FString ULiveGMTestSession::NextId(){return TEXT("gm:")+FGuid::NewGuid().ToStrin
 void ULiveGMTestSession::Record(const FString& Name,const FString& Expected,const FString& Actual,bool Passed)
 {
     FLiveGMCheckResult R;R.Name=Name;R.Expected=Expected;R.Actual=Actual;R.Status=Passed?TEXT("通过"):TEXT("失败");R.Source=Host.IsValid()&&Host->IsDevelopmentSimulation()?TEXT("本地模拟"):TEXT("实际会话");R.Time=FDateTime::UtcNow().ToIso8601();Results.Add(R);if(Results.Num()>100)Results.RemoveAt(0);
+    ++ResultRevision;
 }
 bool ULiveGMTestSession::Join(bool Enter,bool Duplicate)
 {
@@ -104,7 +105,7 @@ bool ULiveGMTestSession::RunAction(FName Action)
         if(Action==TEXT("Heal")){if(Health->bDead)Health->Revive();else Health->Heal(Health->MaxHealth);return true;}
         const double Applied=Health->ApplyIncomingDamage(Health->MaxHealth*.35);Record(TEXT("实际战斗损血"),TEXT("按防御/闪避后实际结算"),FString::Printf(TEXT("%.1f 生命"),Applied),true);return true;
     }
-    if(Id.StartsWith(TEXT("Layout_")))for(TActorIterator<AInkMenuDirector> It(GetWorld());It;++It)if(It->FrontendWidget)return It->FrontendWidget->OpenFeaturePanel(FName(*Id.Mid(7)),TEXT(""));
+    if(Id.StartsWith(TEXT("Layout_")))for(TActorIterator<AInkMenuDirector> It(GetWorld());It;++It)if(It->GameUI)return It->GameUI->OpenRoute(FName(*Id.Mid(7)));
 #endif
     return false;
 }

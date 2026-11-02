@@ -7,7 +7,7 @@
 #include "Cultivation/CultivationNameplate.h"
 #include "Cultivation/CultivationSubsystem.h"
 #include "Frontend/InkMenuDirector.h"
-#include "Frontend/InkFrontendWidget.h"
+#include "InkUI/InkGameUIWidget.h"
 #include "Frontend/InkNiagaraTitleWidget.h"
 #include "NiagaraSystemWidget.h"
 #include "NiagaraUIComponent.h"
@@ -30,7 +30,7 @@ bool ULiveTitleEffectsComponent::IsPresentationBlocked(UWorld* World,bool Includ
 {
     if(!World)return true;
     for(TActorIterator<AInkMenuDirector> It(World);It;++It)
-        if(It->bMenuActive||(It->FrontendWidget&&It->FrontendWidget->IsInViewport()&&It->FrontendWidget->IsVisible()&&It->FrontendWidget->CurrentPage!=TEXT("HUD")))return true;
+        if(It->bMenuActive||(It->GameUI&&It->GameUI->IsInViewport()&&It->GameUI->IsVisible()&&It->GameUI->GetTopRoute()!=NAME_None))return true;
     bool NewGM=false;
     if(IncludeGM)
     {
@@ -67,7 +67,7 @@ void ULiveTitleEffectsComponent::TickComponent(float Delta,ELevelTick Type,FActo
     TArray<FLiveWeaponLabelSample> Samples;if(Visible)Swarm->GetPresentationSamples(Samples);
     if(PC&&PC->GetPawn())Samples.Sort([&](const FLiveWeaponLabelSample& A,const FLiveWeaponLabelSample& B){const bool AP=A.ParticipantId==Swarm->GetPersonalSwordId(),BP=B.ParticipantId==Swarm->GetPersonalSwordId();if(AP!=BP)return AP;const int64 AT=FMath::FloorToInt64(A.LastInteractionTime/2),BT=FMath::FloorToInt64(B.LastInteractionTime/2);if(AT!=BT)return AT>BT;return FVector::DistSquared(A.Position,PC->GetPawn()->GetActorLocation())<FVector::DistSquared(B.Position,PC->GetPawn()->GetActorLocation());});
     TSet<FString> Keep;
-    bool Reduced=false;for(TActorIterator<AInkMenuDirector> It(GetWorld());It;++It)if(It->FrontendWidget)Reduced|=It->FrontendWidget->bReducedMotion;
+    bool Reduced=false;for(TActorIterator<AInkMenuDirector> It(GetWorld());It;++It)if(It->GameUI)Reduced|=It->GameUI->IsReducedMotion();
     bool UsesSlate=false;for(TActorIterator<ALiveGMOverlay> It(GetWorld());It;++It)if(It->Panel&&It->Panel->bDrawCultivationPresentation)UsesSlate=true;
     ULiveAudienceAdapterComponent* Audience=nullptr;
     if(auto* Mode=GetWorld()->GetAuthGameMode<ALiveWeaponGameMode>();Mode&&Mode->Swarm==Swarm)Audience=Mode->Audience;

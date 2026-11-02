@@ -16,7 +16,6 @@ python -m Tools.WindowsRelease.package --engine F:/UNREAL/UE_5.8/UE_5.8 --output
 python -m unittest discover -s Tools/WindowsRelease/tests -v
 python -m Tools.WindowsRelease.package --output Saved/Packages/WindowsFullV14 --verify-only
 & 'Saved/Packages/WindowsFullV14/Windows/Runtime/python.exe' -I 'Saved/Packages/WindowsFullV14/Windows/LocalService/launcher.py' --profile package-smoke --smoke-check
-python -m Tools.WindowsRelease.verify_package --package Saved/Packages/WindowsFullV14/Windows --evidence Saved/Codex/ReleaseReadiness20261022/PackagedPortrait --profile acceptance-portrait
 ```
 
 玩家双击 `Start-Wuling.cmd`；见包内说明。启动器仅监听回环，自动绑定空闲端口；确认服务规则哈希后才启动游戏。存档在 `%LOCALAPPDATA%/BoundlessImmortality/LocalV14/<profile>`。同档重复启动被拒绝；子进程的 stdin 生命周期管道保证启动器退出也会通知服务停止；服务崩溃时游戏保留待确认事务并展示断线状态。
@@ -25,4 +24,4 @@ python -m Tools.WindowsRelease.verify_package --package Saved/Packages/WindowsFu
 
 后五个独立区域依策划分期保持未开放；本机包不替代生产身份、付费履约和平台审批。
 
-`verify_package` 从与安装目录无关的工作目录运行包内 Python 和游戏，使用显式隔离 profile。只有 `-WulingPackageAcceptance -WulingPrototype -GWLocalTest` 同时存在才启动 Development 包体验收；真实 Slate 点击、服务回执及截图在用户目录的 `PackageAcceptance/` 留证，随后复制回工作区。该流程不赠送物品或修改策划概率。素材生成父材质的 RGB/Alpha 连线修复脚本为 `repair_realm_material.py`；原纹理和34个境界裁切实例保持。
+包体渲染验收（`verify_package` 与游戏内 `-WulingPackageAcceptance`）逐页点击的是旧 UMG 前端，已随旧前端于 2026-11-01 移除；新 Slate UI 的渲染检查用 `Tools/InkFrontend/verify_ink_slate_ui_pie.py`（编辑器 PIE）。素材生成父材质的 RGB/Alpha 连线修复脚本为 `repair_realm_material.py`；原纹理和34个境界裁切实例保持。

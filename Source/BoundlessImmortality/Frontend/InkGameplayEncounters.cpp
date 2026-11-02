@@ -7,6 +7,7 @@
 #include "Engine/World.h"
 #include "Engine/GameInstance.h"
 #include "Wuling/WulingPrototypeSubsystem.h"
+#include "XianTu/XianTuSubsystem.h"
 #include "NavigationSystem.h"
 #include "CollisionShape.h"
 
@@ -64,6 +65,8 @@ void AInkMenuDirector::TickGameplayEncounters(float Delta)
     // The standalone live prototype already has its own configured spawn lifecycle.
     if(GetWorld()->GetAuthGameMode<ALiveWeaponGameMode>())return;
     if(!FMath::IsFinite(Delta)||Delta<=0)return;
+    // World trials and contests bring their own scripted enemies; ambient spawns wait meanwhile.
+    if(auto* XianTu=GetGameInstance()->GetSubsystem<UXianTuSubsystem>();XianTu&&XianTu->WantsAmbientPaused())return;
     if(auto* C=GameplayCultivation.Get())if(auto* Health=C->GetAnchorHealth();Health&&Health->bDead)return;
     GameplayEncounters.RemoveAll([](const auto& Weak){return !Weak.IsValid()||!Weak->IsAlive();});
     const int32 Limit=FMath::Clamp(MaximumEncounterCount,0,32);

@@ -33,6 +33,8 @@ struct FLiveWeaponState
     uint32 WeaponRevision=0;
     bool bParticipating=true;
     bool bPersonalSword=false;
+    /** A special sword actor flies this spirit; the swarm keeps the slot but neither draws nor attacks with it. */
+    bool bDelegated=false;
     bool bClockInitialized=false;
     double NextAttackTime=0;
     double LastInteractionTime=0;

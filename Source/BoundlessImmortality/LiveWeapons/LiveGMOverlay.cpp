@@ -10,12 +10,16 @@
 #include "LiveWeaponHUD.h"
 #include "LiveWeaponGameMode.h"
 #include "Frontend/InkMenuDirector.h"
-#include "Frontend/InkFrontendWidget.h"
-#include "Frontend/InkAnchorStatusWidget.h"
+#include "InkUI/InkGameUIWidget.h"
 #include "Frontend/UI/InkUiResponsiveLayout.h"
 #include "Cultivation/CultivationSubsystem.h"
 #include "Cultivation/CultivationHealthComponent.h"
 #include "Cultivation/CultivationNameplate.h"
+#include "SpecialSwords/LiveSpecialSwordTypes.h"
+#include "SpecialSwords/LiveAnchorBuffSubsystem.h"
+#include "XianTu/XianTuSubsystem.h"
+#include "XianTu/XianTuBreakthroughFx.h"
+#include "InkUI/InkGameUIWidget.h"
 #include "LiveInteractionSubsystem.h"
 #include "Blueprint/WidgetTree.h"
 #include "Blueprint/WidgetLayoutLibrary.h"
@@ -43,15 +47,11 @@
 
 namespace
 {
+    /** The Slate HUD's identity card already shows the anchor, so the standalone fallback stays hidden. */
     bool HasVisibleAnchorStatus(UWorld* World,APlayerController* Player)
     {
         for(TActorIterator<AInkMenuDirector> It(World);It;++It)
-        {
-            const auto* Frontend=It->FrontendWidget.Get();
-            const auto* StatusWidget=Frontend?Frontend->AnchorStatusWidget.Get():nullptr;
-            if(Frontend&&Frontend->GetOwningPlayer()==Player&&Frontend->IsInViewport()&&Frontend->IsVisible()&&Frontend->GetRenderOpacity()>0&&Frontend->CurrentPage==TEXT("HUD")
-                &&IsValid(StatusWidget)&&StatusWidget->IsVisible()&&StatusWidget->GetRenderOpacity()>0&&StatusWidget->bHasAnchor)return true;
-        }
+            if(const UInkGameUIWidget* UI=It->GameUI.Get();UI&&UI->GetOwningPlayer()==Player&&UI->IsHudVisible())return true;
         return false;
     }
 }
@@ -83,7 +83,7 @@ void ALiveGMOverlay::Tick(float DeltaSeconds)
     }
     if(Swarm&&Anchor.Get()!=PC->GetPawn()){Anchor=PC->GetPawn();Swarm->SetAnchor(Anchor.Get());}
     Panel->bDrawCultivationPresentation=Cast<ALiveWeaponHUD>(PC->GetHUD())==nullptr;
-    for(TActorIterator<AInkMenuDirector> It(GetWorld());It;++It)if(It->bMenuActive||(It->FrontendWidget&&It->FrontendWidget->CurrentPage!=TEXT("HUD")))Panel->bDrawCultivationPresentation=false;
+    for(TActorIterator<AInkMenuDirector> It(GetWorld());It;++It)if(It->bMenuActive||(It->GameUI&&It->GameUI->GetTopRoute()!=NAME_None))Panel->bDrawCultivationPresentation=false;
     if(Panel->bPanelOpen)Panel->bDrawCultivationPresentation=false;
 #if !UE_BUILD_SHIPPING
     if(PC->WasInputKeyJustPressed(EKeys::F10))Panel->TogglePanel();
@@ -106,8 +106,53 @@ bool ALiveGMOverlay::ExecuteGMAction(FName Action)
         if(!Enabled&&!bBorrowingGameplaySystems){Audience->Unbind();Swarm->Destroy();Swarm=nullptr;Anchor.Reset();}
         return Enabled;
     }
-    if(!IsLocalSimulation())return false;
     const FString ActionText=Action.ToString();
+    if(ActionText.StartsWith(TEXT("XT_")))
+    {
+        auto* XianTu=GetGameInstance()?GetGameInstance()->GetSubsystem<UXianTuSubsystem>():nullptr;if(!XianTu)return false;
+        FText Message;bool bDone=true;
+        if(ActionText.StartsWith(TEXT("XT_Scale")))bDone=XianTu->Execute(TEXT("Scale"),{ActionText.Mid(8)},Message);
+        else if(Action==TEXT("XT_Bundle"))XianTu->DebugGrantBundle();
+        else if(Action==TEXT("XT_Trib"))bDone=XianTu->DebugPrepareTribulation();
+        else if(Action==TEXT("XT_TribStart"))bDone=XianTu->Execute(TEXT("TribStart"),{},Message);
+        else if(Action==TEXT("XT_Assist")){if(IsLocalSimulation()&&Swarm->GetParticipantCount()<10)Audience->AppendSimulatedAudience(10);bDone=XianTu->DebugAssists(10)>0;}
+        else if(Action==TEXT("XT_Respond"))bDone=XianTu->DebugResponses()>0;
+        // Item economy rehearsals: today's fortune, a realm to break from, a guild, or any ledger verb ("XT_Do_Verb.Arg.Arg").
+        else if(Action==TEXT("XT_FortuneReset"))XianTu->DebugResetFortune();
+        else if(ActionText.StartsWith(TEXT("XT_Fortune")))XianTu->DebugForceFortune(FCString::Atoi(*ActionText.Mid(10)));
+        else if(ActionText.StartsWith(TEXT("XT_Realm")))
+        {
+#if !UE_BUILD_SHIPPING
+            UCultivationSubsystem* Cultivation=GetGameInstance()->GetSubsystem<UCultivationSubsystem>();
+            bDone=Cultivation&&Cultivation->DebugSetRealm(Cultivation->GetAnchorId(),FCString::Atoi(*ActionText.Mid(8)),true,40);
+#else
+            bDone=false;
+#endif
+        }
+        else if(ActionText.StartsWith(TEXT("XT_Fx.")))
+        {
+            // "XT_Fx.<from>.<to>[.c]": plays the breakthrough show on the anchor without changing its realm (".c" adds lantern light).
+            TArray<FString> Parts;ActionText.ParseIntoArray(Parts,TEXT("."));
+            APawn* Pawn=PC?PC->GetPawn():nullptr;bDone=Pawn&&Parts.Num()>=3;
+            if(bDone)XianTuBreakthroughFx::Play(Pawn,FCString::Atoi(*Parts[1]),FCString::Atoi(*Parts[2]),Parts.Num()>3);
+        }
+        else if(Action==TEXT("XT_Guild"))bDone=XianTu->Execute(TEXT("GuildCreate"),{TEXT("青云剑宗")},Message);
+        else if(ActionText.StartsWith(TEXT("XT_Do_")))
+        {
+            TArray<FString> Parts;ActionText.Mid(6).ParseIntoArray(Parts,TEXT("."));
+            if(!Parts.Num())return false;
+            const FString Verb=Parts[0];Parts.RemoveAt(0);
+            bDone=XianTu->Execute(Verb,Parts,Message);
+        }
+        else if(Action==TEXT("XT_Open"))
+        {
+            bDone=false;
+            for(TActorIterator<AInkMenuDirector> It(GetWorld());It;++It)if(It->GameUI){bDone=It->GameUI->OpenRoute(TEXT("Journey"));if(bDone&&Panel&&Panel->bPanelOpen)Panel->TogglePanel();break;}
+        }
+        Feedback=Message.IsEmpty()?(bDone?TEXT("仙途本地验证 · 已执行"):TEXT("未执行：条件不满足（需进入游戏或已有观众）")):Message.ToString();
+        return bDone;
+    }
+    if(!IsLocalSimulation())return false;
     if(ActionText.StartsWith(TEXT("Gift")))
     {
         auto* Host=GetGameInstance()?GetGameInstance()->GetSubsystem<ULiveInteractionSubsystem>():nullptr;
@@ -120,6 +165,54 @@ bool ALiveGMOverlay::ExecuteGMAction(FName Action)
             FString RawId=S.Profile.ParticipantId;RawId.RemoveFromStart(TEXT("local:"));
             const bool Applied=Host->SimulateGift(RawId,S.Profile.DisplayName,Gifts[Index],1);
             Feedback=Applied?FString(TEXT("测试礼物已提交："))+Gifts[Index]+TEXT(" ×1"):TEXT("测试礼物未提交：需显式开发会话");return Applied;
+        }
+        return false;
+    }
+    if(ActionText.StartsWith(TEXT("SS_")))
+    {
+        auto* Host=GetGameInstance()?GetGameInstance()->GetSubsystem<ULiveInteractionSubsystem>():nullptr;
+        auto* Cultivation=GetGameInstance()?GetGameInstance()->GetSubsystem<UCultivationSubsystem>():nullptr;
+        if(ActionText.StartsWith(TEXT("SS_Unlock")))
+        {
+            if(!Host||!TestSession)return false;
+            const int32 Index=FCString::Atoi(*ActionText.Mid(9));const auto Kinds=LiveSpecialSwords::All();if(!Kinds.IsValidIndex(Index))return false;
+            if(!TestSession->RunAction(TEXT("Join")))return false;
+            const bool bSent=Host->SimulateGift(TestSession->ViewerId,TestSession->ViewerName,LiveSpecialSwords::GiftName(Kinds[Index]),1);
+            Feedback=bSent?TestSession->ViewerName+TEXT(" 解锁 ")+LiveSpecialSwords::Name(Kinds[Index]).ToString():TEXT("礼物未提交");return bSent;
+        }
+        if(Action==TEXT("SS_All"))
+        {
+            if(!Host)return false;
+            if(Swarm->GetParticipantCount()<5)Audience->AppendSimulatedAudience(5-Swarm->GetParticipantCount());
+            const auto Kinds=LiveSpecialSwords::All();int32 Given=0;
+            for(const auto& S:Swarm->GetRoster().GetStates())
+            {
+                if(Given>=Kinds.Num())break;
+                if(!S.bParticipating||S.bPersonalSword)continue;
+                FString Raw=S.Profile.ParticipantId;Raw.RemoveFromStart(TEXT("local:"));
+                if(Host->SimulateGift(Raw,S.Profile.DisplayName,LiveSpecialSwords::GiftName(Kinds[Given]),1))++Given;
+            }
+            Feedback=FString::Printf(TEXT("已为 %d 名观众解锁五把特殊剑"),Given);return Given>0;
+        }
+        if(Action==TEXT("SS_LowHealth"))
+        {
+            int32 Count=0;
+            for(TActorIterator<ALiveMonster> It(GetWorld());It;++It)if(It->IsAlive()){It->Health=It->GetCurrentMaxHealth()*.12f;++Count;}
+            Feedback=FString::Printf(TEXT("%d 只怪物降至 12%% 生命（噬魂剑吞噬测试）"),Count);return Count>0;
+        }
+        if(Action==TEXT("SS_Debuff"))
+        {
+            auto* Buffs=ULiveAnchorBuffSubsystem::Get(this);if(!Buffs)return false;
+            static FRandomStream Random(1931);Buffs->ApplyRandomMonsterDebuff(Random);Feedback=TEXT("主播获得一个随机减益（驱煞神刃每10秒驱散一个）");return true;
+        }
+        if(Action==TEXT("SS_HitSeventh"))
+        {
+            auto* Health=Cultivation?Cultivation->GetAnchorHealth():nullptr;
+            if(!Health||Health->bDead){Feedback=TEXT("未执行：主播已倒下，先恢复主播");return false;}
+            // Reported with the numbers, so a hit that regeneration or a shield buff soon covers still shows it landed.
+            const double Applied=Health->ApplyDirectDamage(Health->MaxHealth/7.0+1.0);
+            Feedback=Applied>0?FString::Printf(TEXT("主播受到 %.0f 伤害 · 生命 %.0f / %.0f（七星护道测试）"),Applied,Health->Health,Health->MaxHealth):TEXT("未生效：伤害被拦截");
+            return Applied>0;
         }
         return false;
     }
@@ -319,7 +412,7 @@ int32 ULiveGMOverlayWidget::NativePaint(const FPaintArgs& Args,const FGeometry& 
         if(PC->GetPawn())GetWorld()->GetSubsystem<ULiveMonsterRegistrySubsystem>()->CollectInRange(PC->GetPawn()->GetActorLocation(),5000,Monsters);
         for(auto Weak:Monsters)if(auto* Monster=Weak.Get())
         {
-            FVector2D P;if(!PC->ProjectWorldLocationToScreen(Monster->GetActorLocation()+FVector(0,0,65),P,true))continue;P=P/Scale;
+            FVector2D P;if(!PC->ProjectWorldLocationToScreen(Monster->GetHealthBarLocation(),P,true))continue;P=P/Scale;
             auto& Bar=MonsterProgress.FindOrAdd(Monster);Bar.SetTarget(Monster->GetHealthFraction());Bar.Tick(GetWorld()->GetDeltaSeconds());
             Box(Layer+3,P-FVector2D(28,0),FVector2D(56,7),FLinearColor(.04f,.015f,.015f,.9f));Box(Layer+4,P-FVector2D(27,-1),FVector2D(54*Bar.Trail,5),FLinearColor(.28f,.08f,.05f,1));Box(Layer+5,P-FVector2D(27,-1),FVector2D(54*Bar.Value,5),FLinearColor(.95f,.22f,.12f,1));
         }

@@ -1,7 +1,7 @@
 #include "InkNiagaraTitleWidget.h"
 #include "Frontend/UI/InkUiAssetPaths.h"
 #include "InkPresentationStyle.h"
-#include "InkFrontendWidget.h"
+#include "InkUI/InkUIMotion.h"
 #include "UI/InkUiTheme.h"
 #include "Cultivation/CultivationNameplate.h"
 #include "Blueprint/WidgetTree.h"
@@ -133,7 +133,7 @@ void UInkNiagaraTitleWidget::Tick(float)
     if(!IsTickable())return;
     bool Visible=bPresentationVisible&&IsVisible()&&GetRenderOpacity()>.001f&&EffectIntensity>0&&EffectTint.A>0;
     for(auto* Parent=GetParent();Parent;Parent=Parent->GetParent())Visible=Visible&&Parent->IsVisible()&&Parent->GetRenderOpacity()>.001f;
-    bool Reduced=bReducedMotion;if(auto* F=GetTypedOuter<UInkFrontendWidget>())Reduced|=F->bReducedMotion;
+    const bool Reduced=bReducedMotion||InkUI::Motion::IsReduced();
     if(Caption&&!Label.IsEmpty())
     {
         const int32 Size=FMath::Clamp(FMath::FloorToInt(FMath::Min(float(LastPaintSize.Y*.62),float(LastPaintSize.X*.93/FMath::Max(1,Label.ToString().Len())))),8,24);

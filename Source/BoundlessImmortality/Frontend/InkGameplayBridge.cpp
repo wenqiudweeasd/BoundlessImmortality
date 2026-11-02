@@ -1,13 +1,11 @@
 #include "InkMenuDirector.h"
 #include <limits>
 #include "InkPawnSafety.h"
-#include "InkFrontendWidget.h"
+#include "InkUI/InkGameUIWidget.h"
 #include "Cultivation/CultivationSubsystem.h"
 #include "Cultivation/CultivationHealthComponent.h"
 #include "Cultivation/CultivationPrototypeClient.h"
 #include "Wuling/WulingPrototypeSubsystem.h"
-#include "Wuling/WulingInventoryProjection.h"
-#include "Frontend/InkInventoryModel.h"
 #include "LiveWeapons/LiveWeaponSwarm.h"
 #include "LiveWeapons/LiveWeaponGameMode.h"
 #include "LiveWeapons/LiveGMOverlay.h"
@@ -126,7 +124,7 @@ void AInkMenuDirector::HandleAnchorDied()
     }
     ReturnToMainMenu();
     const FText Message=FText::FromString(TEXT("气息已竭，已退出战斗。点击“开始游戏”回到出生点，恢复血量后重整仙途。"));
-    if(FrontendWidget)FrontendWidget->SetFeedback(Message);
+    ShowFrontendFeedback(Message);
     OnGameplayAnnouncement.Broadcast(Message.ToString());
 }
 void AInkMenuDirector::RememberSafeGameplayTransform()
@@ -163,10 +161,8 @@ bool AInkMenuDirector::RespawnGameplayPawn(APawn* Pawn)
 
 void AInkMenuDirector::PublishGameplayData()
 {
-    if(!bPublishGameplayData||bMenuActive||!FrontendWidget||!GetGameInstance())return;
+    if(!bPublishGameplayData||bMenuActive||!GameUI||!GetGameInstance())return;
     auto* C=GetGameInstance()->GetSubsystem<UCultivationSubsystem>();if(!C)return;
-    if(auto* W=GetGameInstance()->GetSubsystem<UWulingPrototypeSubsystem>();W&&W->IsEnabled()&&W->IsConnected())
-        WulingInventoryProjection::Apply(*FrontendWidget->GetInventoryModel(),W->Snapshot());
     const auto Anchor=C->GetParticipantSnapshot(C->GetAnchorId());if(Anchor.ParticipantId.IsEmpty())return;
     TArray<FInkCharacterAttribute> Attributes;
     const auto Add=[&](FName Id,const TCHAR* Label,const FString& Value,double Number=std::numeric_limits<double>::quiet_NaN(),double Base=0){FInkCharacterAttribute Row;Row.AttributeId=Id;Row.Label=FText::FromString(Label);Row.Value=FText::FromString(Value);Row.bHasNumericValue=FMath::IsFinite(Number);Row.NumericValue=Row.bHasNumericValue?Number:0;Row.RatingBaseValue=Base;Attributes.Add(Row);};
@@ -189,8 +185,7 @@ void AInkMenuDirector::PublishGameplayData()
     Add(TEXT("MoveSpeed"),TEXT("实际移速上限"),Movement?FString::Printf(TEXT("%.0f 厘米/秒"),Movement->MaxWalkSpeed):TEXT("—"),Movement?Movement->MaxWalkSpeed:std::numeric_limits<double>::quiet_NaN(),BaseSpeed);Add(TEXT("Swordsmanship"),TEXT("剑法（预留）"),FString::Printf(TEXT("%.1f"),A.Swordsmanship));
     Add(TEXT("CultivationSpeed"),TEXT("修炼速度"),FString::Printf(TEXT("%.2f /秒"),Anchor.EffectiveCultivationPerSecond),Anchor.EffectiveCultivationPerSecond);Add(TEXT("Realm"),TEXT("境界"),Anchor.RealmName.ToString());
     Add(TEXT("Cultivation"),TEXT("修为"),FString::Printf(TEXT("%.0f / %.0f"),Anchor.Cultivation,Anchor.RequiredCultivation));
-    TArray<FInkDisciplineEntry> Disciplines;
-    FrontendWidget->SetCharacterData(FText::FromString(Anchor.DisplayName),Attributes,Disciplines);
+    GameUI->SetCharacterData(FText::FromString(Anchor.DisplayName),Attributes);
     TArray<FInkLeaderboardEntry> Boards;const auto Participants=C->GetParticipants();
     for(const FName Category:{FName(TEXT("Anchor")),FName(TEXT("CultivationSpeed")),FName(TEXT("Damage"))})
     {
@@ -204,8 +199,5 @@ void AInkMenuDirector::PublishGameplayData()
             Entry.Metric=FText::FromString(Category==TEXT("Anchor")?FString::Printf(TEXT("%.0f 把"),Entry.NumericMetric):FString::Printf(TEXT("%.2f /秒"),Entry.NumericMetric));Entry.TitleId=P.TitleId;Entry.Realm=P.RealmName;Entry.RealmIndex=P.RealmIndex;Entry.AvatarUrl=P.AvatarUrl;Boards.Add(Entry);
         }
     }
-    FrontendWidget->SetLeaderboardEntriesForScope(Boards,TEXT("Local"));
-    auto* Shared=GetGameInstance()->GetSubsystem<UCultivationPrototypeClient>();
-    FrontendWidget->SetGlobalLeaderboardConnection(Shared&&Shared->IsConnected(),FText::FromString(Shared?Shared->GetStatus():TEXT("共享原型未连接")));
-    FrontendWidget->SetLeaderboardEntriesForScope(Shared?Shared->GetLeaderboardEntries():TArray<FInkLeaderboardEntry>(),TEXT("Global"));
+    GameUI->SetLeaderboardEntries(Boards);
 }

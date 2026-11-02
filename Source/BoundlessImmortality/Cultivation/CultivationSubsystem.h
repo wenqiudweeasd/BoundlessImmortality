@@ -32,6 +32,17 @@ public:
     UFUNCTION(BlueprintCallable) bool ProcessGift(const FCultivationGiftEvent& Event);
     UFUNCTION(BlueprintCallable) bool AddCultivation(const FString& Id,double Amount);
     UFUNCTION(BlueprintCallable) bool TryAnchorBreakthrough();
+    /** bChargeMaterial false skips the 破境石 cost: the 仙途 ledger has already taken a major stage's own materials. */
+    bool TryAnchorBreakthroughEx(bool bChargeMaterial);
+    /** Breakthrough quality (design v1.4 §4): multiplies the anchor's attack, health and defense; 1..1.10. */
+    void SetAnchorQualityFactor(double Factor);
+    double GetAnchorQualityFactor()const{return AnchorQualityFactor;}
+    /** Tribulation failure: removes up to Amount unspent cultivation; never lowers a realm. Returns the loss. */
+    UFUNCTION(BlueprintCallable) double ApplyCultivationLoss(const FString& Id,double Amount);
+#if !UE_BUILD_SHIPPING
+    /** Local verification only: places a participant at a realm with full cultivation and breakthrough material. */
+    bool DebugSetRealm(const FString& Id,int32 Realm,bool bFillCultivation,int32 Materials);
+#endif
     /** New-rule growth mirrors only; legacy gift fields and receipts remain in this existing ledger. */
     void SetWulingAuthorityEnabled(bool Enabled){bWulingAuthority=Enabled;if(Enabled)bPersistLocalRecords=false;}
     bool IsWulingAuthorityEnabled()const{return bWulingAuthority;}
@@ -79,6 +90,7 @@ private:
     TMap<FString,FCultivationAttributes> WulingAttributes;
     TMap<FString,FString> WulingHonorTitles;
     bool bWulingAuthority=false;
+    double AnchorQualityFactor=1;
     void NotifyRealmAdvanced(const FString& Id,int32 Previous,int32 Current);
     TArray<FCultivationPotionSource> RoomPotionSources;
     TWeakObjectPtr<APawn> AnchorPawn;

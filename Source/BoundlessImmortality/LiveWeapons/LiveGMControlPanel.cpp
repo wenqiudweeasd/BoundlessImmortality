@@ -7,6 +7,11 @@
 #include "Frontend/InkBufferedProgressWidget.h"
 #include "Cultivation/CultivationSubsystem.h"
 #include "Cultivation/CultivationRules.h"
+#include "SpecialSwords/LiveSpecialSwordComponent.h"
+#include "SpecialSwords/LiveSpecialSword.h"
+#include "SpecialSwords/LiveAnchorBuffSubsystem.h"
+#include "XianTu/XianTuSubsystem.h"
+#include "XianTu/XianTuRules.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/CanvasPanel.h"
 #include "Components/CanvasPanelSlot.h"
@@ -116,9 +121,9 @@ void ULiveGMControlPanel::Rebuild()
     else Canvas->ClearChildren();
     auto* Paper=WidgetTree->ConstructWidget<UBorder>();Paper->SetBrush(InkPresentationStyle::Surface(InkPresentationStyle::ESurface::Card,FVector2D(600,820)));Paper->SetVisibility(ESlateVisibility::HitTestInvisible);auto* Background=Canvas->AddChildToCanvas(Paper);Background->SetOffsets(FMargin(0,0,600,820));
     Text(TEXT("GM · 本地演示与界面测试"),24,20,470,40,27);Button(TEXT("GMToggle"),TEXT("收起"),496,18,80,42);
-    const TCHAR* Ids[]={TEXT("Session"),TEXT("Audience"),TEXT("Events"),TEXT("Visual"),TEXT("Layout"),TEXT("Results")};const TCHAR* Labels[]={TEXT("会话"),TEXT("观众"),TEXT("互动"),TEXT("表现"),TEXT("布局"),TEXT("结果")};
-    for(int32 I=0;I<6;++I)Button(FName(*(FString(TEXT("Tab_"))+Ids[I])),Labels[I],24+I*92,78,86,42);
-    Status=Text(Session->DescribeSession(),26,140,548,104,16);Status->SetClipping(EWidgetClipping::ClipToBoundsAlways);ResultText=nullptr;
+    const TCHAR* Ids[]={TEXT("Session"),TEXT("Audience"),TEXT("Events"),TEXT("Swords"),TEXT("XianTu"),TEXT("Visual"),TEXT("Layout"),TEXT("Results")};const TCHAR* Labels[]={TEXT("会话"),TEXT("观众"),TEXT("互动"),TEXT("剑灵"),TEXT("仙途"),TEXT("表现"),TEXT("布局"),TEXT("结果")};
+    for(int32 I=0;I<8;++I)Button(FName(*(FString(TEXT("Tab_"))+Ids[I])),Labels[I],24+I*69,78,64,42);
+    Status=Text(Session->DescribeSession(),26,140,548,104,16);Status->SetClipping(EWidgetClipping::ClipToBoundsAlways);ResultText=nullptr;LiveText=nullptr;
     if(SelectedTab==TEXT("Session"))
     {
         Button(TEXT("EnableTest"),TEXT("确认本地模拟"),28,264,544);
@@ -134,7 +139,8 @@ void ULiveGMControlPanel::Rebuild()
         Button(TEXT("QA_Duplicate"),TEXT("重复进场去重"),28,484);Button(TEXT("Add10"),TEXT("加入 10 名"),316,484);
         Button(TEXT("Add100"),TEXT("加入 100 名"),28,546);Button(TEXT("Fill1000"),TEXT("补足 1000 名"),316,546);
         Button(TEXT("ClearAudience"),TEXT("清理模拟观众"),28,608,544);
-        Text(TEXT("同 ID 更新身份，同名不同 ID 分别生成。\n留空头像显示占位；失败重试不阻止加入。"),28,680,544,80,18);
+        Text(TEXT("同 ID 更新身份，同名不同 ID 分别生成。\n每名观众的剑灵从 GanzSe 武器包随机取一件静态网格（同一观众固定）。"),28,664,544,80,18);
+        LiveText=Text(TEXT(""),28,724,544,44,16);
     }
     else if(SelectedTab==TEXT("Events"))
     {
@@ -151,6 +157,25 @@ void ULiveGMControlPanel::Rebuild()
         }
         RefreshGiftDescriptions();
         Text(TEXT("每次赠送 1 份 · 悬停查看完整效果与冷却"),28,750,544,22,14);
+    }
+    else if(SelectedTab==TEXT("Swords"))
+    {
+        Text(TEXT("为测试观众解锁特殊剑（等同赠送对应礼物）"),28,248,544,30,18);
+        const TCHAR* Names[]={TEXT("噬魂剑 · 稀有宝箱"),TEXT("无机态那 · 超能喷射"),TEXT("驱煞神刃 · 神秘空投"),TEXT("七星光芒剑 · 草莓甜点"),TEXT("弑神剑 · 超级空投")};
+        for(int32 I=0;I<5;++I)Button(FName(*FString::Printf(TEXT("SS_Unlock%d"),I)),Names[I],28+(I%2)*288,282+(I/2)*54,244,46);
+        Button(TEXT("SS_All"),TEXT("五剑齐出"),316,390,244,46);
+        Button(TEXT("SpawnMonsters"),TEXT("生成测试怪物"),28,448,172,42);Button(TEXT("SS_LowHealth"),TEXT("怪物残血"),214,448,172,42);Button(TEXT("ClearMonsters"),TEXT("清除怪物"),400,448,172,42);
+        Button(TEXT("SS_Debuff"),TEXT("主播减益"),28,498,172,42);Button(TEXT("SS_HitSeventh"),TEXT("主播受击 1/7"),214,498,172,42);Button(TEXT("QA_Heal"),TEXT("恢复主播"),400,498,172,42);
+        LiveText=Text(TEXT(""),28,550,544,220,15);LiveText->SetClipping(EWidgetClipping::ClipToBoundsAlways);
+    }
+    else if(SelectedTab==TEXT("XianTu"))
+    {
+        Text(TEXT("仙途本地验证（世界历练 / 竞采 / 武灵 / 功法 / 天劫 / 坊市）"),28,248,544,30,18);
+        Button(TEXT("XT_Scale1"),TEXT("流速 ×1"),28,284,172,42);Button(TEXT("XT_Scale10"),TEXT("流速 ×10"),214,284,172,42);Button(TEXT("XT_Scale30"),TEXT("流速 ×30"),400,284,172,42);
+        Button(TEXT("XT_Bundle"),TEXT("发放测试物资"),28,336,244,46);Button(TEXT("XT_Open"),TEXT("打开仙途"),316,336,244,46);
+        Button(TEXT("XT_Trib"),TEXT("渡劫测试准备"),28,390,244,46);Button(TEXT("XT_Assist"),TEXT("模拟助力 ×10"),316,390,244,46);
+        Button(TEXT("XT_Respond"),TEXT("代表响应（护阵）"),28,444,244,46);Button(TEXT("Add10"),TEXT("加入 10 名观众"),316,444,244,46);
+        LiveText=Text(TEXT(""),28,502,544,268,15);LiveText->SetClipping(EWidgetClipping::ClipToBoundsAlways);
     }
     else if(SelectedTab==TEXT("Visual"))
     {
@@ -194,8 +219,14 @@ void ULiveGMControlPanel::ExecuteControl(FName Action)
         FLiveGMCheckResult R;R.Name=TEXT("护盾/修为双层样本");R.Expected=TEXT("前景即时，暗层保留上次位置");R.Actual=FString::Printf(TEXT("护盾 %.2f / %.2f，修为 %.2f / %.2f"),ShieldSample->Fraction,ShieldSample->TrailFraction,CultivationSample->Fraction,CultivationSample->TrailFraction);R.Status=FMath::Abs(ShieldSample->Fraction-ShieldSample->TrailFraction)>.1f?TEXT("通过"):TEXT("失败");R.Source=TEXT("本地展示样本");R.Time=FDateTime::UtcNow().ToIso8601();Session->Results.Add(R);
         Host->Feedback=TEXT("护盾与修为展示样本，不修改角色数值");return;
     }
-    const bool Applied=Id.StartsWith(TEXT("QA_"))?Session->RunAction(FName(*Id.Mid(3))):Host->ExecuteGMAction(Action);
-    Host->Feedback=Applied?TEXT("本地模拟已执行 · ")+Id:TEXT("未执行：本地模拟未就绪或条件不满足");RefreshTime=.2f;
+    // Actions that report their own outcome (damage dealt, swords granted) keep it; QA actions show the result they
+    // recorded; only silent actions get the generic line.
+    const int32 Revision=Session->ResultRevision;Host->Feedback.Reset();
+    const bool bQA=Id.StartsWith(TEXT("QA_"));
+    const bool Applied=bQA?Session->RunAction(FName(*Id.Mid(3))):Host->ExecuteGMAction(Action);
+    if(bQA&&Session->ResultRevision!=Revision&&Session->Results.Num()){const auto& R=Session->Results.Last();Host->Feedback=R.Status+TEXT(" · ")+R.Name+TEXT(" · ")+R.Actual;}
+    else if(Host->Feedback.IsEmpty())Host->Feedback=Applied?TEXT("本地模拟已执行 · ")+Id:TEXT("未执行：本地模拟未就绪或条件不满足");
+    RefreshTime=.2f;
 }
 void ULiveGMControlPanel::NativeTick(const FGeometry& G,float Delta)
 {
@@ -204,6 +235,43 @@ void ULiveGMControlPanel::NativeTick(const FGeometry& G,float Delta)
     if(Host->Swarm)State+=FString::Printf(TEXT("\n剑灵 %d · 称号动效 %d"),Host->Swarm->GetParticipantCount(),Host->Swarm->TitleEffects?Host->Swarm->TitleEffects->ActiveEffectCount:0);
     if(Status)Status->SetText(FText::FromString(State));
     if(SelectedTab==TEXT("Events"))RefreshGiftDescriptions();
+    if(LiveText)
+    {
+        FString Lines;
+        if(SelectedTab==TEXT("Swords"))
+        {
+            TArray<ALiveSpecialSword*> Swords;if(Host->Swarm&&Host->Swarm->SpecialSwords)Host->Swarm->SpecialSwords->GetSwords(Swords);
+            if(!Swords.Num())Lines=TEXT("暂无特殊剑灵 · 点击上方按钮解锁");
+            for(const ALiveSpecialSword* S:Swords)
+            {
+                TArray<FLiveSpecialSkillState> Skills;S->GetSkillStates(Skills);
+                Lines+=FString::Printf(TEXT("%s · %s · %s · 攻击 %.0f\n"),*S->GetDisplayName(),*LiveSpecialSwords::Name(S->GetKind()).ToString(),*S->GetStatusText().ToString(),S->AttackPower());
+                for(const auto& K:Skills)if(!K.bPassive)Lines+=FString::Printf(TEXT("   %s %s"),*K.Name.ToString(),K.Remaining>0?*FString::Printf(TEXT("%.1f秒"),K.Remaining):TEXT("就绪"));
+                Lines+=TEXT("\n");
+            }
+            if(auto* Buffs=ULiveAnchorBuffSubsystem::Get(this))
+            {
+                double Shield=0,Max=0;Buffs->GetShield(Shield,Max);
+                Lines+=FString::Printf(TEXT("主播增益 %d 项 · 减益 %d 项 · 防御倍率 ×%.2f · 护盾 %.0f/%.0f"),Buffs->GetBuffs().Num()-Buffs->CountDebuffs(),Buffs->CountDebuffs(),Buffs->GetDefenseMultiplier(),Shield,Max);
+            }
+        }
+        else if(SelectedTab==TEXT("XianTu"))
+        {
+            if(const auto* X=GetGameInstance()?GetGameInstance()->GetSubsystem<UXianTuSubsystem>():nullptr)
+            {
+                const auto S=X->GetState();
+                Lines=FString::Printf(TEXT("流速 ×%.0f · 灵石 %lld · 残页 %d · 破境石 %d\n历练：%s（%.0f秒，阶段 %d）\n竞采：%s · 开采权 %s\n武灵：%s · 正式成员 %d（在场 %d）· 资材 %d · 声望 %d\n天劫：%s · 助力 %d · 成功率 %d%%\n坊市挂单 %d 笔"),
+                    S->TimeScale,S->Stones,X->ItemCount(TEXT("MAT_PAGE")),X->ItemCount(TEXT("MAT_BREAK")),
+                    *XianTuRules::StateText(S->World.State).ToString(),S->World.Elapsed,S->World.Stage,
+                    *XianTuRules::StateText(S->Race.State).ToString(),X->ActiveLease()?*XianTuRules::Node(X->ActiveLease()->Node)->Name.ToString():TEXT("无"),
+                    S->Guild.bCreated?(S->Guild.Name.IsEmpty()?TEXT("审核中"):*S->Guild.Name):TEXT("未创建"),X->FormalMembers(false),X->FormalMembers(true),S->Guild.Materials,S->Guild.Reputation,
+                    *XianTuRules::StateText(S->Trib.State).ToString(),S->Trib.Assists.Num(),X->TribulationProbability(S->Trib.Assists.Num())/100,
+                    S->Orders.FilterByPredicate([](const FXianTuOrder& O){return O.bMine&&O.State==EXianTuOrderState::Listed;}).Num());
+            }
+        }
+        else if(Host->Swarm)Lines=FString::Printf(TEXT("观众剑灵模型池 %d 件 · 当前剑灵 %d"),Host->Swarm->GetAudienceMeshCount(),Host->Swarm->GetParticipantCount());
+        LiveText->SetText(FText::FromString(Lines));
+    }
     if(ResultText){FString Lines;for(const auto& R:Session->Results)Lines+=R.Status+TEXT(" · ")+R.Name+TEXT("\n预期 ")+R.Expected+TEXT(" / 实测 ")+R.Actual+TEXT("\n来源 ")+R.Source+TEXT(" · ")+R.Time+TEXT("\n\n");if(!Session->ReportPath.IsEmpty())Lines=TEXT("导出：")+Session->ReportPath+TEXT("\n\n")+Lines;if(Lines.IsEmpty())Lines=TEXT("未运行 · 尚无测试结果");ResultText->SetText(FText::FromString(Lines));}
 }
 

@@ -1,7 +1,7 @@
 #include "WulingWorldTarget.h"
 #include "WulingPrototypeSubsystem.h"
 #include "GameFramework/Pawn.h"
-bool AWulingWorldTarget::ApplyWeaponDamage(float Amount,const FString& ParticipantId)
+bool AWulingWorldTarget::ApplyWeaponHit(const FLiveHit& Hit,const FString& ParticipantId)
 {
     return !bMechanicLocked&&IsAlive()&&Authority.IsValid()&&Authority->SubmitStrike(ParticipantId,TargetId);
 }

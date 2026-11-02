@@ -1,5 +1,5 @@
 #include "Frontend/InkMenuDirector.h"
-#include "Frontend/InkFrontendWidget.h"
+#include "InkUI/InkGameUIWidget.h"
 #include "Frontend/InkSaveSubsystem.h"
 #include "CultivationGameplayComponent.h"
 #include "QiCultivationComponent.h"
@@ -31,7 +31,6 @@ AInkMenuDirector::AInkMenuDirector()
 {
     PrimaryActorTick.bCanEverTick=true;
     SwarmClass=ALiveWeaponSwarm::StaticClass();
-    WidgetClass=UInkFrontendWidget::StaticClass();
     DirectorAudience=CreateDefaultSubobject<ULiveAudienceAdapterComponent>(TEXT("GameplayAudience"));
     EncounterMonsterClass=ALiveMonster::StaticClass();
     static ConstructorHelpers::FObjectFinder<UStaticMesh> Sword(TEXT("/Game/Isometric_World/Sky_Temple/Meshes/Sculptures/SM_Scultpture_Sword_01.SM_Scultpture_Sword_01"));
@@ -86,15 +85,25 @@ bool AInkMenuDirector::IsGameplayPawnCandidate(const APawn* Pawn)const
     return !MenuClass||!Pawn->IsA(MenuClass);
 }
 
+void AInkMenuDirector::ShowFrontendPage(bool bMainMenu)
+{
+    if(IsValid(GameUI)){if(bMainMenu)GameUI->ShowMainMenu();else GameUI->ShowHud();}
+}
+
+void AInkMenuDirector::ShowFrontendFeedback(const FText& Message)
+{
+    if(IsValid(GameUI))GameUI->ShowToast(Message,2);
+}
+
 bool AInkMenuDirector::EnsureFrontend()
 {
-    if(IsValid(FrontendWidget))return true;
+    if(IsValid(GameUI))return true;
     auto* PC=LocalController.Get();
-    if(!PC||!WidgetClass)return false;
-    FrontendWidget=CreateWidget<UInkFrontendWidget>(PC,WidgetClass);
-    if(!FrontendWidget)return false;
-    FrontendWidget->Configure(this);
-    FrontendWidget->AddToViewport(200);
+    if(!PC)return false;
+    GameUI=CreateWidget<UInkGameUIWidget>(PC,UInkGameUIWidget::StaticClass());
+    if(!GameUI)return false;
+    GameUI->Configure(this);
+    GameUI->AddToViewport(200);
     return true;
 }
 
@@ -220,7 +229,7 @@ bool AInkMenuDirector::TryEnterMenu()
     bPresentationReady=true;bEnterMenuRequested=false;
     PresentationStatus=TEXT("修炼演示就绪");
     if(auto* GameInstance=GetGameInstance())if(auto* Saves=GameInstance->GetSubsystem<UInkSaveSubsystem>())Saves->EndGameplay();
-    FrontendWidget->ShowPage(FName(TEXT("Main")));
+    ShowFrontendPage(true);
     return true;
 }
 
@@ -299,7 +308,7 @@ bool AInkMenuDirector::StartGame()
     PC->bAutoManageActiveCameraTarget=true;PC->SetViewTarget(Player);
     if(IsValid(Demo))Demo->Destroy();PresentationActor=nullptr;
     SetFrontendInputBlocked(false);
-    FrontendWidget->ShowPage(FName(TEXT("HUD")));
+    ShowFrontendPage(false);
     EnsureGameplaySystems();GameplayPublishElapsed=0;if(bPublishGameplayData)PublishGameplayData();
     PresentationStatus=TEXT("已进入游戏");
     if(auto* GameInstance=GetGameInstance())if(auto* Saves=GameInstance->GetSubsystem<UInkSaveSubsystem>())
@@ -307,7 +316,7 @@ bool AInkMenuDirector::StartGame()
         if(!Saves->BeginGameplay(PC->GetPawn()))
         {
             PresentationStatus=Saves->LastError;
-            FrontendWidget->SetFeedback(FText::FromString(Saves->LastError));
+            ShowFrontendFeedback(FText::FromString(Saves->LastError));
         }
     }
     return true;
@@ -322,7 +331,7 @@ void AInkMenuDirector::ReturnToMainMenu()
         PresentationElapsedSeconds=0;PresentationStartedAt=FPlatformTime::Seconds();
         if(PresentationSwarm)PresentationSwarm->SetPresentationMode(ELiveWeaponPresentationMode::Idle);
         SetFrontendInputBlocked(true);
-        if(EnsureFrontend())FrontendWidget->ShowPage(FName(TEXT("Main")));
+        if(EnsureFrontend())ShowFrontendPage(true);
         bEnterMenuRequested=false;return;
     }
     TryEnterMenu();
@@ -448,6 +457,6 @@ void AInkMenuDirector::EndPlay(const EEndPlayReason::Type Reason)
     for(TActorIterator<ALiveGMOverlay> It(GetWorld());It;++It)if(It->GetOwner()==this)It->Destroy();
     LeaveMenu();
     if(auto* GameInstance=GetGameInstance())if(auto* Saves=GameInstance->GetSubsystem<UInkSaveSubsystem>())Saves->EndGameplay();
-    if(FrontendWidget){FrontendWidget->RemoveFromParent();FrontendWidget=nullptr;}
+    if(GameUI){GameUI->RemoveFromParent();GameUI=nullptr;}
     Super::EndPlay(Reason);
 }

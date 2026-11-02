@@ -34,11 +34,11 @@ bool AddExperience(FCultivationParticipantRecord& R,double Amount,const FCultiva
     }
     ++R.Version;return true;
 }
-bool Breakthrough(FCultivationParticipantRecord& R,const FCultivationRuleConfig& C)
+bool Breakthrough(FCultivationParticipantRecord& R,const FCultivationRuleConfig& C,bool bChargeMaterial)
 {
     if(!R.bIsAnchor||R.RealmIndex>=C.RealmNames.Num()-1||R.Cultivation<Threshold(C,R.RealmIndex))return false;
-    const int32 Cost=MaterialCost(C,R.RealmIndex);if(R.Materials.FindRef(C.BreakthroughMaterialId)<Cost)return false;
-    R.Materials.FindOrAdd(C.BreakthroughMaterialId)-=Cost;R.Cultivation-=Threshold(C,R.RealmIndex);++R.RealmIndex;++R.Version;return true;
+    const int32 Cost=bChargeMaterial?MaterialCost(C,R.RealmIndex):0;if(R.Materials.FindRef(C.BreakthroughMaterialId)<Cost)return false;
+    if(Cost>0)R.Materials.FindOrAdd(C.BreakthroughMaterialId)-=Cost;R.Cultivation-=Threshold(C,R.RealmIndex);++R.RealmIndex;++R.Version;return true;
 }
 FName GiftTitle(ECultivationGift G)
 {

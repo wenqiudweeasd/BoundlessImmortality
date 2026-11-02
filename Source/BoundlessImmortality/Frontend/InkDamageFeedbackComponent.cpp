@@ -7,8 +7,6 @@
 #include "Camera/CameraTypes.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
-#include "Misc/CommandLine.h"
-#include "Misc/Parse.h"
 
 void UInkDamageCameraModifier::Pulse(const FInkHitShakeSettings& Settings,float Scale)
 {
@@ -51,8 +49,9 @@ void UInkDamageFeedbackComponent::OnDamage(double Applied,double Maximum)
 void UInkDamageFeedbackComponent::PreviewDamageRatio(double Ratio)
 {
 #if !UE_BUILD_SHIPPING
-    FString Suffix;
-    if(FParse::Value(FCommandLine::Get(),TEXT("saveddirsuffix="),Suffix)&&!Suffix.IsEmpty()&&FMath::IsFinite(Ratio))OnDamage(FMath::Clamp(Ratio,0.,1.),1.);
+    // GM damage samples play in any development session, like the rest of the local-simulation GM; requiring an
+    // isolated -saveddirsuffix process made the buttons silently do nothing in ordinary PIE.
+    if(FMath::IsFinite(Ratio))OnDamage(FMath::Clamp(Ratio,0.,1.),1.);
 #endif
 }
 void UInkDamageFeedbackComponent::EndPlay(const EEndPlayReason::Type Reason)

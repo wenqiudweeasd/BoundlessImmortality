@@ -13,7 +13,7 @@ public:
     FString TargetId;
     bool bMechanicLocked=false;
     TWeakObjectPtr<UWulingPrototypeSubsystem> Authority;
-    virtual bool ApplyWeaponDamage(float Amount,const FString& ParticipantId) override;
+    virtual bool ApplyWeaponHit(const FLiveHit& Hit,const FString& ParticipantId) override;
     virtual void Tick(float DeltaSeconds) override;
     void Mirror(float Current,float Maximum);
 };

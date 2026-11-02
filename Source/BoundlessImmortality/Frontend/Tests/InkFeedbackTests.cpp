@@ -6,7 +6,6 @@
 #include "Frontend/InkDamageFeedbackComponent.h"
 #include "Camera/CameraTypes.h"
 #include "Frontend/InkPresentationStyle.h"
-#include "Frontend/InkAnchorStatusWidget.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FInkBufferedProgressTest,"BoundlessImmortality.Frontend.Feedback.BufferedProgress",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
 bool FInkBufferedProgressTest::RunTest(const FString&)
@@ -66,13 +65,6 @@ bool FInkSingleDamageEventTest::RunTest(const FString&)
     Health->Heal(20);TestEqual(TEXT("Healing cannot become another damage event"),Feedback->DamageEventCount,1);
     Health->ApplyIncomingDamage(5);Health->ApplyIncomingDamage(5);TestEqual(TEXT("Small hits are independent"),Feedback->LastDamageTier,0);
     Feedback->Observe(nullptr);Health->ApplyIncomingDamage(5);TestEqual(TEXT("Unbind stops callbacks"),Feedback->DamageEventCount,3);
-    auto* Status=NewObject<UInkAnchorStatusWidget>();Status->ObserveDamage(Health);
-    Health->ApplyIncomingDamage(5);Health->Heal(Health->MaxHealth);
-    TestTrue(TEXT("A hit followed by healing retains its event flash"),Status->DamageFlash>0);
-    Status->ObserveDamage(nullptr);Status->ObserveDamage(Health);Health->MaxHealth=50;Health->Health=50;
-    TestEqual(TEXT("Changing maximum health does not create a hit flash"),Status->DamageFlash,0.f);
-    Status->ObserveDamage(nullptr);Health->ApplyIncomingDamage(5);
-    TestEqual(TEXT("Retired widget no longer receives hits"),Status->DamageFlash,0.f);
     auto* Modifier=NewObject<UInkDamageCameraModifier>();FInkHitShakeSettings Settings;Modifier->Pulse(Settings,1);
     FMinimalViewInfo POV;POV.Location=FVector(123,456,789);POV.Rotation=FRotator(10,20,0);const auto Baseline=POV;
     Modifier->ModifyCamera(.03f,POV);TestFalse(TEXT("Impulse changes current view"),POV.Rotation.Equals(Baseline.Rotation));

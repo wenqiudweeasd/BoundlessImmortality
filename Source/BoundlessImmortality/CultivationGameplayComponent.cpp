@@ -89,7 +89,7 @@ void UCultivationGameplayComponent::BindController(APlayerController* Controller
 
 void UCultivationGameplayComponent::UnbindController()
 {
-    FinishAction();
+    if(!bTribulationLock)FinishAction();
     ResetInkEffect();
     if(auto* PC=BoundController.Get())
     {
@@ -169,7 +169,7 @@ void UCultivationGameplayComponent::EnterState(ECultivationActionState NewState)
 
 bool UCultivationGameplayComponent::RequestCultivationToggle()
 {
-    if(bMenuPresentation||bFrontendInputBlocked)return false;
+    if(bMenuPresentation||bFrontendInputBlocked||bTribulationLock)return false;
     if(State==ECultivationActionState::Idle)
     {
         if(!CanStart(true)||!EnsureInkCover())return false;
@@ -182,7 +182,7 @@ bool UCultivationGameplayComponent::RequestCultivationToggle()
 
 bool UCultivationGameplayComponent::SetAttackHeld(bool Held)
 {
-    if(bMenuPresentation||(bFrontendInputBlocked&&Held))return false;
+    if(bMenuPresentation||bTribulationLock||(bFrontendInputBlocked&&Held))return false;
     bAttackHeld=Held;
     if(Held && State==ECultivationActionState::Idle)
     {
@@ -195,8 +195,36 @@ bool UCultivationGameplayComponent::SetAttackHeld(bool Held)
 void UCultivationGameplayComponent::InterruptAction()
 {
     if(bMenuPresentation)return;
+    // Death and other hard interruptions also end a tribulation's meditation.
+    bTribulationLock=false;
     bAttackHeld=false;bPreviousMouseDown=false;bToggleLatched=false;ToggleHeldSeconds=0;
     FinishAction();ResetInkEffect();if(Qi)Qi->CancelCultivation();
+}
+
+bool UCultivationGameplayComponent::SetTribulationMeditation(bool bOn)
+{
+    if(bOn==bTribulationLock)return true;
+    if(!bOn)
+    {
+        bTribulationLock=false;
+        // Rise through the same ink transition as the anchor's own 收功.
+        if(State==ECultivationActionState::MeditationStart)bExitMeditationRequested=true;
+        else if(State==ECultivationActionState::MeditationLoop)EnterState(ECultivationActionState::MeditationEnd);
+        return true;
+    }
+    if(bMenuPresentation||!HasBegunPlay()||!Character||!Driver||!Character->GetCharacterMovement())return false;
+    const auto* Mesh=Driver->GetSkeletalMeshAsset();
+    if(!Mesh||!MeditationLoop||MeditationLoop->GetPlayLength()<=0||MeditationLoop->GetSkeleton()!=Mesh->GetSkeleton())return false;
+    bTribulationLock=true;bAttackHeld=false;bExitMeditationRequested=false;
+    SetComponentTickEnabled(true);
+    if(State==ECultivationActionState::MeditationStart||State==ECultivationActionState::MeditationLoop)return true;
+    if(State!=ECultivationActionState::Idle)FinishAction();
+    if(!Qi)Qi=GetOwner()->FindComponentByClass<UQiCultivationComponent>();
+    BeginAction();
+    if(auto* PC=Cast<APlayerController>(Character->GetController());PC&&PC!=BoundController.Get()){PC->StopMovement();PC->SetIgnoreMoveInput(true);LockedController=PC;}
+    // Without its ink cover the pose still changes, only without the transition.
+    EnterState(EnsureInkCover()?ECultivationActionState::MeditationStart:ECultivationActionState::MeditationLoop);
+    return State!=ECultivationActionState::Idle;
 }
 
 void UCultivationGameplayComponent::SetFrontendInputBlocked(bool bBlocked)
@@ -258,7 +286,9 @@ void UCultivationGameplayComponent::FinishAction()
             Character->GetCharacterMovement()->SetMovementMode(PreviousMovementMode,PreviousCustomMovementMode);
         }
         if(auto* PC=BoundController.Get())PC->SetIgnoreMoveInput(false);
+        if(auto* PC=LockedController.Get())PC->SetIgnoreMoveInput(false);
     }
+    LockedController.Reset();
     bMovementLease=false;bExitMeditationRequested=false;State=ECultivationActionState::Idle;StateElapsed=0;
 }
 
@@ -324,7 +354,14 @@ void UCultivationGameplayComponent::PollInput(APlayerController* Controller,floa
 void UCultivationGameplayComponent::TickComponent(float DeltaTime,ELevelTick TickType,FActorComponentTickFunction* ThisTickFunction)
 {
     Super::TickComponent(DeltaTime,TickType,ThisTickFunction);
-    if(!bActiveMap || !Character)return;
+    if(!Character)return;
+    if(!bActiveMap)
+    {
+        // Maps without the meditation keys only play the tribulation's forced meditation, then stop ticking.
+        AdvanceAction(DeltaTime);
+        if(!bTribulationLock&&State==ECultivationActionState::Idle)SetComponentTickEnabled(false);
+        return;
+    }
     if(bMenuPresentation){AdvanceAction(DeltaTime);return;}
     auto* Controller=Cast<APlayerController>(Character->GetController());
     if(!Controller || !Character->IsLocallyControlled())
@@ -375,7 +412,9 @@ bool UCultivationGameplayComponent::EnsureInkCover()
 void UCultivationGameplayComponent::UpdateInkCover()
 {
     if(!InkCover||!InkMaterial||!Character)return;
-    const auto* PC=BoundController.Get();const APlayerCameraManager* Camera=PC?PC->PlayerCameraManager.Get():nullptr;
+    // A tribulation's meditation also plays on maps that never bind a controller here.
+    const auto* PC=BoundController.IsValid()?BoundController.Get():Cast<APlayerController>(Character->GetController());
+    const APlayerCameraManager* Camera=PC?PC->PlayerCameraManager.Get():nullptr;
     if(!Camera)return;
     const float T=StateElapsed/FMath::Clamp(InkTransitionSeconds,.6f,2.f);
     InkCoverage=FMath::SmoothStep(0.f,.28f,T)*(1-FMath::SmoothStep(.65f,1.f,T));

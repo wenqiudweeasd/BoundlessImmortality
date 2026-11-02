@@ -7,6 +7,7 @@
 #include "LiveWeaponSwarm.generated.h"
 class UInstancedStaticMeshComponent;
 class ULiveTitleEffectsComponent;
+class ULiveSpecialSwordComponent;
 class ULiveWeaponDefinition;
 class ULiveWeaponSkill;
 class ALiveMonster;
@@ -37,6 +38,8 @@ struct FLiveWeaponVisualState
     EPhase Phase=EPhase::Wander;
     bool bPathValid=false,bContinueCombo=false,bPendingArrow=false;
     int32 InstanceIndex=0;
+    /** Audience mesh pool drawing this spirit, or INDEX_NONE for the per-type weapon components. */
+    int32 MeshPool=INDEX_NONE;
     int32 ComboHits=0;
     uint32 AttackToken=0;
     FRandomStream Random;
@@ -62,6 +65,19 @@ class BOUNDLESSIMMORTALITY_API ALiveWeaponSwarm : public AActor
 public:
     UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="Presentation|Nameplates") FCultivationNameplateDistanceSettings NameplateDistanceSettings;
     UPROPERTY(VisibleAnywhere,BlueprintReadOnly,Category="Presentation|Titles") TObjectPtr<ULiveTitleEffectsComponent> TitleEffects;
+    UPROPERTY(VisibleAnywhere,BlueprintReadOnly,Category="剑灵|特殊剑") TObjectPtr<ULiveSpecialSwordComponent> SpecialSwords;
+    /** The anchor's own sword spirit (本命剑) flies with the audience swords; turning it off removes it (the sword test range does). */
+    UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="剑灵|本命剑",meta=(DisplayName="主播本命剑灵")) bool bAnchorPersonalSword=true;
+    /** Every static mesh under this folder is a candidate; each viewer's spirit takes one at random (stable per viewer). */
+    UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="剑灵|观众模型",meta=(DisplayName="观众剑灵模型目录")) FString AudienceMeshDirectory=TEXT("/Game/GanzSe_Weapons_Pack/Static_Meshes");
+    UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="剑灵|观众模型",meta=(DisplayName="观众剑灵模型长度",ClampMin="10",Units="cm")) float AudienceMeshLength=110;
+    UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="剑灵|观众模型",meta=(DisplayName="启用随机观众模型")) bool bRandomAudienceMeshes=true;
+    UFUNCTION(BlueprintPure,Category="剑灵|观众模型") int32 GetAudienceMeshCount()const{return MeshPools.Num();}
+    /** Asset name of the mesh drawing this viewer, empty for the per-type default weapon. */
+    UFUNCTION(BlueprintPure,Category="剑灵|观众模型") FString GetParticipantMeshName(const FString& Id)const;
+    /** Hands a spirit to (or takes it back from) a special-sword actor; the slot keeps nameplate and leases. */
+    bool SetParticipantDelegated(const FString& Id,bool bDelegated);
+    void SetDelegatedPosition(const FString& Id,const FVector& Position);
     ALiveWeaponSwarm();
     UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="预警圆环",meta=(DisplayName="最小半径",ClampMin="1",Units="cm",ToolTip="预警圆环目标位置的最小水平半径，单位厘米。每把剑灵在最小与最大半径之间独立缓慢变化；两值相等时关闭径向变化。实际跟随位置仍受返回过程和人物避让约束。")) float AlertRadiusMin=200;
     UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="预警圆环",meta=(DisplayName="最大半径",ClampMin="1",Units="cm",ToolTip="预警圆环目标位置的最大水平半径，单位厘米。调大使圆环分布向外扩展；若小于最小半径，运行时会自动按两值排序。")) float AlertRadiusMax=260;
@@ -187,6 +203,12 @@ private:
     float IdlePixelsPerUnit=1,IdleWeaponRadius=40;
     bool bHasIdleView=false;
     UPROPERTY(Transient) TMap<FName,TObjectPtr<ULiveWeaponSkill>> SkillObjects;
+    UPROPERTY(Transient) TArray<TObjectPtr<UInstancedStaticMeshComponent>> AudienceMeshComponents;
+    struct FAudienceMeshPool{FTransform Fix;TArray<int32> Slots;FString Label;};
+    TArray<FAudienceMeshPool> MeshPools;
+    TArray<FTransform> PoolTransforms;
+    void LoadAudienceMeshes();
+    int32 ChooseMeshPool(const FString& ParticipantId)const;
     ULiveWeaponDefinition* Definition(ELiveWeaponType Type)const;
     FVector FormationPosition(int32 Index)const;
     bool IsCurrent(FLiveWeaponHandle Handle)const;

@@ -139,12 +139,37 @@ void UCultivationSubsystem::NotifyRealmAdvanced(const FString& Id,int32 Previous
     const FString Text=Count>1?FString::Printf(TEXT("%s 连破 %d 重境界 · %s"),*Name,Count,*Realm.ToString()):Name+TEXT(" 突破 · ")+Realm.ToString();
     OnRealmAdvanced.Broadcast(Id,Previous,Current);OnAnnouncement.Broadcast(Text);
 }
-bool UCultivationSubsystem::TryAnchorBreakthrough()
+bool UCultivationSubsystem::TryAnchorBreakthrough(){return TryAnchorBreakthroughEx(true);}
+void UCultivationSubsystem::SetAnchorQualityFactor(double Factor)
+{
+    Factor=FMath::IsFinite(Factor)?FMath::Clamp(Factor,1.0,1.1):1.0;
+    if(FMath::IsNearlyEqual(Factor,AnchorQualityFactor))return;
+    AnchorQualityFactor=Factor;bAuraCacheDirty=true;OnStateChanged.Broadcast();
+}
+bool UCultivationSubsystem::TryAnchorBreakthroughEx(bool bChargeMaterial)
 {
     if(bWulingAuthority)return false;
-    auto* R=Records.Find(AnchorId);if(!R)return false;const auto Before=*R;if(!CultivationRules::Breakthrough(*R,Rules))return false;
+    auto* R=Records.Find(AnchorId);if(!R)return false;const auto Before=*R;if(!CultivationRules::Breakthrough(*R,Rules,bChargeMaterial))return false;
     bDirty=true;bAuraCacheDirty=true;if(!SaveRecords()){Records.Add(AnchorId,Before);return false;}NotifyRealmAdvanced(AnchorId,Before.RealmIndex,R->RealmIndex);OnStateChanged.Broadcast();return true;
 }
+double UCultivationSubsystem::ApplyCultivationLoss(const FString& Id,double Amount)
+{
+    if(bWulingAuthority||!FMath::IsFinite(Amount)||Amount<=0)return 0;
+    auto* R=Records.Find(Id);if(!R)return 0;
+    const double Loss=FMath::Min(Amount,FMath::Max(0.0,R->Cultivation));
+    R->Cultivation-=Loss;++R->Version;bDirty=true;OnStateChanged.Broadcast();return Loss;
+}
+#if !UE_BUILD_SHIPPING
+bool UCultivationSubsystem::DebugSetRealm(const FString& Id,int32 Realm,bool bFillCultivation,int32 Materials)
+{
+    if(bWulingAuthority)return false;
+    auto* R=Records.Find(Id);if(!R)return false;
+    R->RealmIndex=FMath::Clamp(Realm,0,FMath::Max(0,Rules.RealmNames.Num()-1));
+    if(bFillCultivation)R->Cultivation=CultivationRules::Threshold(Rules,R->RealmIndex);
+    if(Materials>0)R->Materials.FindOrAdd(Rules.BreakthroughMaterialId)=FMath::Max(R->Materials.FindRef(Rules.BreakthroughMaterialId),Materials);
+    ++R->Version;bDirty=true;bAuraCacheDirty=true;OnStateChanged.Broadcast();return true;
+}
+#endif
 void UCultivationSubsystem::GrantMaterial(const FString& Id,FName Material,int32 Count)
 {
     if(bWulingAuthority)return;
@@ -191,6 +216,7 @@ FCultivationAttributes UCultivationSubsystem::ResolveAttributes(const FCultivati
     if(CachedSoulHolders.Contains(R.ParticipantId))CultivationRules::AddScaled(Result,CultivationRules::PersonalAttributes(R,Rules,Realm),-Share);
     if(bCachedJet)CultivationRules::AddFlat(Result,Rules.JetFlatBonus);
     if(!R.bIsAnchor){Result.MaxHealth=0;Result.Defense=0;Result.HealthRegeneration=0;}
+    else if(AnchorQualityFactor>1){Result.Attack*=AnchorQualityFactor;Result.MaxHealth*=AnchorQualityFactor;Result.Defense*=AnchorQualityFactor;}
     Result.CriticalChance=FMath::Clamp(Result.CriticalChance,0.0,1.0);Result.EvasionChance=FMath::Clamp(Result.EvasionChance,0.0,1.0);return Result;
 }
 double UCultivationSubsystem::CultivationRate(const FCultivationParticipantRecord& R,double Now)const

@@ -21,7 +21,7 @@ void ALiveWeaponGameMode::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);if(bStarted)return;
     auto* PC=GetWorld()->GetFirstPlayerController();if(!PC||!PC->GetPawn())return;
-    Swarm=GetWorld()->SpawnActor<ALiveWeaponSwarm>(SwarmClass);if(!Swarm)return;Swarm->SetAnchor(PC->GetPawn());Audience->Bind(Swarm);bStarted=true;
+    Swarm=GetWorld()->SpawnActor<ALiveWeaponSwarm>(SwarmClass);if(!Swarm)return;Swarm->bAnchorPersonalSword=bAnchorPersonalSword;Swarm->SetAnchor(PC->GetPawn());Audience->Bind(Swarm);bStarted=true;
     for(TActorIterator<ALiveMonster> It(GetWorld());It;++It)It->FollowTarget=PC->GetPawn();
     int32 MonsterCount=InitialMonsters,ViewerCount=0;
 #if !UE_BUILD_SHIPPING

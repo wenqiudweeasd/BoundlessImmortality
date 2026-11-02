@@ -8,7 +8,8 @@ namespace CultivationRules
     BOUNDLESSIMMORTALITY_API double Threshold(const FCultivationRuleConfig& Rules,int32 Realm);
     BOUNDLESSIMMORTALITY_API int32 MaterialCost(const FCultivationRuleConfig& Rules,int32 Realm);
     BOUNDLESSIMMORTALITY_API bool AddExperience(FCultivationParticipantRecord& Record,double Amount,const FCultivationRuleConfig& Rules);
-    BOUNDLESSIMMORTALITY_API bool Breakthrough(FCultivationParticipantRecord& Record,const FCultivationRuleConfig& Rules);
+    /** bChargeMaterial false: v1.4 major stages pay with their own core and aux materials instead of 破境石. */
+    BOUNDLESSIMMORTALITY_API bool Breakthrough(FCultivationParticipantRecord& Record,const FCultivationRuleConfig& Rules,bool bChargeMaterial=true);
     BOUNDLESSIMMORTALITY_API FName GiftTitle(ECultivationGift Gift);
     BOUNDLESSIMMORTALITY_API FText TitleName(FName Title);
     BOUNDLESSIMMORTALITY_API bool ApplyGift(FCultivationParticipantRecord& Record,const FCultivationGiftEvent& Event,double Now,const FCultivationRuleConfig& Rules);

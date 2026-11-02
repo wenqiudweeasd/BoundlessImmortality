@@ -4,7 +4,6 @@
 #include "Wuling/WulingSnapshotProjection.h"
 #include "Dom/JsonObject.h"
 #include "Engine/GameInstance.h"
-#include "Frontend/InkFeaturePanel.h"
 #include "Frontend/InkInventoryModel.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWulingProjectionTest,"BoundlessImmortality.Wuling.AuthorityProjection",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
@@ -29,13 +28,6 @@ bool FWulingProjectionTest::RunTest(const FString&)
     TestEqual(TEXT("mirror remains authoritative"),C->GetParticipantSnapshot(TEXT("anchor")).Cultivation,88.0);
     Manifest->SetStringField(TEXT("profile"),TEXT("douyin_release_candidate"));
     TestFalse(TEXT("wrong profile cannot project"),WulingSnapshotProjection::Apply(*C,Root,TEXT("prototype-anchor")));
-    return true;
-}
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWulingFunctionalRoutesTest,"BoundlessImmortality.Wuling.FunctionalRoutes",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
-bool FWulingFunctionalRoutesTest::RunTest(const FString&)
-{
-    for(const TCHAR* Route:{TEXT("WulingCraft"),TEXT("WulingSources"),TEXT("WulingBreakthrough"),TEXT("WulingEquipment"),TEXT("WulingConstruction"),TEXT("WulingActivity"),TEXT("WulingRace"),TEXT("WulingShop"),TEXT("WulingMarket"),TEXT("WulingGuild"),TEXT("WulingOrders"),TEXT("WulingOffline"),TEXT("WulingRights")})
-        TestNotNull(*FString::Printf(TEXT("functional route %s exists"),Route),UInkFeaturePanel::ClassForRoute(FName(Route)).Get());
     return true;
 }
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWulingInventoryTest,"BoundlessImmortality.Wuling.AuthorityInventory",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)

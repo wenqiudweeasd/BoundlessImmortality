@@ -36,6 +36,8 @@ public:
     UPROPERTY(VisibleAnywhere,BlueprintReadOnly,Category="GM|Results") int32 ReceivedEvents=0;
     UPROPERTY(VisibleAnywhere,BlueprintReadOnly,Category="GM|Results") FString LastEvent;
     UPROPERTY(VisibleAnywhere,BlueprintReadOnly,Category="GM|Results") FString ReportPath;
+    /** Bumped on every recorded result (Results is capped, so its length cannot tell a new entry). */
+    UPROPERTY(VisibleAnywhere,BlueprintReadOnly,Category="GM|Results") int32 ResultRevision=0;
     static bool IsIsolatedCommandLine(const FString& CommandLine);
     UFUNCTION(BlueprintPure,Category="GM|Session") bool CanMutate()const;
     UFUNCTION(BlueprintPure,Category="GM|Session") FString DescribeSession()const;

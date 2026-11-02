@@ -13,8 +13,11 @@
 #include "QiCultivationComponent.h"
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
+#include "Camera/PlayerCameraManager.h"
 #include "Engine/World.h"
 #include "GameFramework/Pawn.h"
+#include "GameFramework/PlayerInput.h"
+#include "GameFramework/SpringArmComponent.h"
 #include "InputCoreTypes.h"
 ALiveAnchorController::ALiveAnchorController(){bAutoManageActiveCameraTarget=false;bShowMouseCursor=true;bEnableClickEvents=true;}
 void ALiveAnchorController::OnPossess(APawn* ControlledPawn)
@@ -23,8 +26,19 @@ void ALiveAnchorController::OnPossess(APawn* ControlledPawn)
     if(auto* Old=ControlledPawn->FindComponentByClass<UCultivationGameplayComponent>()){Old->SetComponentTickEnabled(false);Old->Deactivate();}
     if(auto* Qi=ControlledPawn->FindComponentByClass<UQiCultivationComponent>()){Qi->bEnableKeyboard=false;Qi->StopCultivation();}
     Ability=ControlledPawn->FindComponentByClass<ULiveAnchorAbilityComponent>();if(!Ability){Ability=NewObject<ULiveAnchorAbilityComponent>(ControlledPawn);Ability->RegisterComponent();}
-    LiveCamera=GetWorld()->SpawnActor<ACameraActor>();LiveCamera->GetCameraComponent()->ProjectionMode=ECameraProjectionMode::Orthographic;
-    LiveCamera->GetCameraComponent()->OrthoWidth=2600;LiveCamera->GetCameraComponent()->bConstrainAspectRatio=false;SetViewTarget(LiveCamera);
+    const auto* LiveMode=GetWorld()->GetAuthGameMode<ALiveWeaponGameMode>();
+    if(LiveMode&&!LiveMode->bOrthographicCamera)
+    {
+        bAutoManageActiveCameraTarget=true;SetViewTarget(ControlledPawn);
+        // The pawn's own boom frames the game; the wheel zoom scales its length from there.
+        if(USpringArmComponent* Arm=ControlledPawn->FindComponentByClass<USpringArmComponent>();Arm&&Arm!=Boom.Get()){Boom=Arm;BoomLength=Arm->TargetArmLength;}
+    }
+    else
+    {
+        LiveCamera=GetWorld()->SpawnActor<ACameraActor>();LiveCamera->GetCameraComponent()->ProjectionMode=ECameraProjectionMode::Orthographic;
+        LiveCamera->GetCameraComponent()->OrthoWidth=OrthoWidth;LiveCamera->GetCameraComponent()->bConstrainAspectRatio=false;SetViewTarget(LiveCamera);
+    }
+    SetCameraZoom(ZoomGoal,true);
     FInputModeGameAndUI Mode;Mode.SetHideCursorDuringCapture(false);Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);SetInputMode(Mode);
 }
 void ALiveAnchorController::PlayerTick(float DeltaSeconds)
@@ -32,10 +46,11 @@ void ALiveAnchorController::PlayerTick(float DeltaSeconds)
     Super::PlayerTick(DeltaSeconds);APawn* ControlledPawn=GetPawn();if(!ControlledPawn)return;
     const float X=float(IsInputKeyDown(EKeys::W))-float(IsInputKeyDown(EKeys::S));
     const float Y=float(IsInputKeyDown(EKeys::D))-float(IsInputKeyDown(EKeys::A));
-    const float Yaw=LiveCamera?LiveCamera->GetActorRotation().Yaw:0;const FRotationMatrix Basis(FRotator(0,Yaw,0));
+    const float Yaw=LiveCamera?LiveCamera->GetActorRotation().Yaw:PlayerCameraManager?PlayerCameraManager->GetCameraRotation().Yaw:0;const FRotationMatrix Basis(FRotator(0,Yaw,0));
     ControlledPawn->AddMovementInput((Basis.GetUnitAxis(EAxis::X)*X+Basis.GetUnitAxis(EAxis::Y)*Y).GetSafeNormal());
     if(WasInputKeyJustPressed(EKeys::SpaceBar)&&Ability)Ability->TryPush();
     if(LiveCamera){const FVector Location=ControlledPawn->GetActorLocation()+FVector(-1200,0,1800);LiveCamera->SetActorLocationAndRotation(Location,(ControlledPawn->GetActorLocation()-Location).Rotation());}
+    TickZoom(DeltaSeconds);
 #if !UE_BUILD_SHIPPING
     if(WasInputKeyJustPressed(EKeys::F10)){bool Overlay=false;for(TActorIterator<ALiveGMOverlay> It(GetWorld());It;++It)Overlay=true;if(!Overlay)if(auto* HUD=GetHUD<ALiveWeaponHUD>())HUD->bGMPanelOpen=!HUD->bGMPanelOpen;}
     if(WasInputKeyJustPressed(EKeys::F1))LiveAudience(100);if(WasInputKeyJustPressed(EKeys::F2))LiveAudience(500);if(WasInputKeyJustPressed(EKeys::F3))LiveAudience(1000);
@@ -95,3 +110,24 @@ void ALiveAnchorController::LiveSkill(const FString& Id,FName Skill)
 
 bool ALiveAnchorController::IsUsingGameplayCamera()const
 {return GetPawn()&&LiveCamera&&GetViewTarget()==LiveCamera;}
+
+void ALiveAnchorController::SetCameraZoom(float NewZoom,bool bInstant)
+{
+    ZoomGoal=FMath::Clamp(FMath::IsFinite(NewZoom)?NewZoom:1.f,FMath::Min(MinZoom,1.f),FMath::Max(MaxZoom,1.f));
+    if(bInstant){Zoom=ZoomGoal;TickZoom(0.f);}
+}
+
+void ALiveAnchorController::TickZoom(float DeltaSeconds)
+{
+    // Wheel notches arrive as presses of the scroll keys; a UI that handles the wheel (lists, the codex) keeps them.
+    int32 Notches=0;
+    if(PlayerInput)
+    {
+        if(const FKeyState* Up=PlayerInput->GetKeyState(EKeys::MouseScrollUp))Notches+=Up->EventCounts[IE_Pressed].Num();
+        if(const FKeyState* Down=PlayerInput->GetKeyState(EKeys::MouseScrollDown))Notches-=Down->EventCounts[IE_Pressed].Num();
+    }
+    if(Notches)SetCameraZoom(ZoomGoal*FMath::Pow(.85f,float(Notches)));
+    Zoom=DeltaSeconds>0.f?FMath::FInterpTo(Zoom,ZoomGoal,DeltaSeconds,10.f):ZoomGoal;
+    if(USpringArmComponent* Arm=Boom.Get();Arm&&BoomLength>0.f)Arm->TargetArmLength=BoomLength*Zoom;
+    if(LiveCamera)LiveCamera->GetCameraComponent()->OrthoWidth=OrthoWidth*Zoom;
+}

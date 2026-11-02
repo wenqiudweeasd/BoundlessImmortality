@@ -16,8 +16,7 @@
 #include "Cultivation/CultivationNameplate.h"
 #include "LiveInteractionSubsystem.h"
 #include "Frontend/InkMenuDirector.h"
-#include "Frontend/InkFrontendWidget.h"
-#include "Frontend/InkAnchorStatusWidget.h"
+#include "InkUI/InkGameUIWidget.h"
 #include "Frontend/UI/InkUiResponsiveLayout.h"
 #include "Blueprint/WidgetLayoutLibrary.h"
 #include "Engine/GameInstance.h"
@@ -33,15 +32,11 @@
 
 namespace
 {
+    /** The Slate HUD's identity card already shows the anchor, so the standalone fallback stays hidden. */
     bool HasVisibleAnchorStatus(UWorld* World,APlayerController* Player)
     {
         for(TActorIterator<AInkMenuDirector> It(World);It;++It)
-        {
-            const auto* Frontend=It->FrontendWidget.Get();
-            const auto* StatusWidget=Frontend?Frontend->AnchorStatusWidget.Get():nullptr;
-            if(Frontend&&Frontend->GetOwningPlayer()==Player&&Frontend->IsInViewport()&&Frontend->IsVisible()&&Frontend->GetRenderOpacity()>0&&Frontend->CurrentPage==TEXT("HUD")
-                &&IsValid(StatusWidget)&&StatusWidget->IsVisible()&&StatusWidget->GetRenderOpacity()>0&&StatusWidget->bHasAnchor)return true;
-        }
+            if(const UInkGameUIWidget* UI=It->GameUI.Get();UI&&UI->GetOwningPlayer()==Player&&UI->IsHudVisible())return true;
         return false;
     }
 }
@@ -124,7 +119,7 @@ void ALiveWeaponHUD::DrawHUD()
     TArray<TWeakObjectPtr<ALiveMonster>> Monsters;GetWorld()->GetSubsystem<ULiveMonsterRegistrySubsystem>()->CollectInRange(Pawn->GetActorLocation(),5000,Monsters);
     for(auto Weak:Monsters)if(auto* M=Weak.Get())
     {
-        FVector2D P;if(!PlayerOwner->ProjectWorldLocationToScreen(M->GetActorLocation()+FVector(0,0,65),P,true)||P.X<0||P.X>Canvas->SizeX||P.Y<0||P.Y>Canvas->SizeY)continue;
+        FVector2D P;if(!PlayerOwner->ProjectWorldLocationToScreen(M->GetHealthBarLocation(),P,true)||P.X<0||P.X>Canvas->SizeX||P.Y<0||P.Y>Canvas->SizeY)continue;
         auto& Bar=MonsterProgress.FindOrAdd(M);Bar.SetTarget(M->GetHealthFraction());Bar.Tick(GetWorld()->GetDeltaSeconds());
         DrawRect(FLinearColor(.04f,.015f,.015f,.9f),P.X-28,P.Y,56,7);DrawRect(FLinearColor(.28f,.08f,.05f,1),P.X-27,P.Y+1,54*Bar.Trail,5);DrawRect(FLinearColor(.95f,.22f,.12f,1),P.X-27,P.Y+1,54*Bar.Value,5);
     }

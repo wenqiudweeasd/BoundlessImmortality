@@ -36,6 +36,7 @@ private:
     UPROPERTY(Transient) TObjectPtr<UCanvasPanel> Canvas;
     UPROPERTY(Transient) TObjectPtr<UTextBlock> Status;
     UPROPERTY(Transient) TObjectPtr<UTextBlock> ResultText;
+    UPROPERTY(Transient) TObjectPtr<UTextBlock> LiveText;
     UPROPERTY(Transient) TObjectPtr<UEditableTextBox> ViewerId;
     UPROPERTY(Transient) TObjectPtr<UEditableTextBox> ViewerName;
     UPROPERTY(Transient) TObjectPtr<UEditableTextBox> AvatarUrl;

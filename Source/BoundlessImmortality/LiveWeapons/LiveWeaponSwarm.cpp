@@ -1,8 +1,14 @@
 #include "LiveWeaponSwarm.h"
 #include "LiveTitleEffectsComponent.h"
+#include "SpecialSwords/LiveSpecialSwordComponent.h"
+#include "AssetRegistry/AssetRegistryModule.h"
+#include "AssetRegistry/AssetData.h"
+#include "XianTu/XianTuSubsystem.h"
 #include "LiveWeaponDefinition.h"
 #include "LiveMonster.h"
 #include "LiveMonsterRegistrySubsystem.h"
+#include "SpecialSwords/LiveSpecialSwordTypes.h"
+#include "Combat/LiveCombat.h"
 #include "Cultivation/CultivationSubsystem.h"
 #include "Cultivation/CultivationHealthComponent.h"
 #include "Engine/GameInstance.h"
@@ -68,6 +74,7 @@ ALiveWeaponSwarm::ALiveWeaponSwarm()
 {
     PrimaryActorTick.bCanEverTick=true;SetRootComponent(CreateDefaultSubobject<USceneComponent>(TEXT("Root")));
     TitleEffects=CreateDefaultSubobject<ULiveTitleEffectsComponent>(TEXT("TitleEffects"));
+    SpecialSwords=CreateDefaultSubobject<ULiveSpecialSwordComponent>(TEXT("SpecialSwords"));
     SetActorEnableCollision(false);
     static ConstructorHelpers::FObjectFinder<UStaticMesh> Cube(TEXT("/Engine/BasicShapes/Cube.Cube"));
     static ConstructorHelpers::FObjectFinder<UStaticMesh> Cylinder(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
@@ -100,6 +107,7 @@ void ALiveWeaponSwarm::BeginPlay()
         }
     }
     Arrows.SetNum(2048);for(int I=0;I<Arrows.Num();++I){FreeArrows.Add(I);ArrowMesh->AddInstance(FTransform(FQuat::Identity,FVector::ZeroVector,FVector::ZeroVector));}
+    LoadAudienceMeshes();
 }
 void ALiveWeaponSwarm::SetAnchor(APawn* Pawn)
 {
@@ -122,6 +130,7 @@ void ALiveWeaponSwarm::EndPlay(const EEndPlayReason::Type Reason)
 }
 void ALiveWeaponSwarm::EnsurePersonalSword()
 {
+    if(!bAnchorPersonalSword){if(!PersonalSwordId.IsEmpty()){RemoveParticipant(PersonalSwordId);PersonalSwordId.Reset();}return;}
     if(PresentationMode!=ELiveWeaponPresentationMode::Gameplay||!Anchor.IsValid()||!GetWorld()->GetGameInstance())return;
     auto* C=GetWorld()->GetGameInstance()->GetSubsystem<UCultivationSubsystem>();if(!C||!C->GetAnchorHealth())return;
     const FString Expected=TEXT("@anchor:")+C->GetAnchorId();
@@ -144,7 +153,9 @@ bool ALiveWeaponSwarm::RemoveParticipant(const FString& Id)
     auto* S=Roster.Find(Id);if(!S||!S->bParticipating)return false;S->bParticipating=false;++S->WeaponRevision;
     auto& V=Visuals[S->Handle.Index];++V.AttackToken;V.bPathValid=false;V.Target.Reset();V.bPendingArrow=false;
     for(int32 I=0;I<Arrows.Num();++I)if(Arrows[I].bActive&&Arrows[I].Owner==S->Handle)ReleaseArrow(I);
-    WeaponMeshes[uint8(S->WeaponType)]->UpdateInstanceTransform(V.InstanceIndex,FTransform(FQuat::Identity,FVector::ZeroVector,FVector::ZeroVector),true,false,true);
+    if(MeshPools.IsValidIndex(V.MeshPool))AudienceMeshComponents[V.MeshPool]->UpdateInstanceTransform(V.InstanceIndex,FTransform(FQuat::Identity,FVector::ZeroVector,FVector::ZeroVector),true,false,true);
+    else WeaponMeshes[uint8(S->WeaponType)]->UpdateInstanceTransform(V.InstanceIndex,FTransform(FQuat::Identity,FVector::ZeroVector,FVector::ZeroVector),true,false,true);
+    S->bDelegated=false;
     if(!S->bPersonalSword&&GetWorld()->GetGameInstance())GetWorld()->GetGameInstance()->GetSubsystem<UCultivationSubsystem>()->LeaveParticipant(Id);return true;
 }
 void ALiveWeaponSwarm::SetPresentationMode(ELiveWeaponPresentationMode Mode)
@@ -314,13 +325,29 @@ FLiveWeaponHandle ALiveWeaponSwarm::JoinParticipant(const FLiveParticipantProfil
     V.RadiusDriftRate=V.Random.FRandRange(.15f,.4f);V.HeightDriftRate=V.Random.FRandRange(.12f,.35f);
     V.TempoBias=V.Random.FRandRange(-.25f,.25f);V.TempoPhase=V.Random.FRandRange(0,2*PI);V.TempoFrequency=V.Random.FRandRange(.4f,.85f);
     V.IdleRotation=FRotator(V.Random.FRandRange(-12,12),V.Random.FRandRange(0,360),V.Random.FRandRange(-10,10)).Quaternion();V.RenderRotation=V.IdleRotation;
-    V.ReferenceFloorZ=AnchorFootZ();Visuals.Add(V);BeginHover(Handle.Index);RenderSlots[0].Add(Handle.Index);const auto* Def=Definition(ELiveWeaponType::Sword);
+    V.ReferenceFloorZ=AnchorFootZ();
+    // Viewers draw a random weapon from the audience mesh folder; the anchor's own sword keeps its configured model.
+    const int32 Pool=Profile.ParticipantId.StartsWith(TEXT("@anchor:"))||PresentationMode!=ELiveWeaponPresentationMode::Gameplay?INDEX_NONE:ChooseMeshPool(Profile.ParticipantId);
+    if(Pool!=INDEX_NONE)
+    {
+        V.MeshPool=Pool;V.InstanceIndex=MeshPools[Pool].Slots.Num();Visuals.Add(V);BeginHover(Handle.Index);MeshPools[Pool].Slots.Add(Handle.Index);
+        AudienceMeshComponents[Pool]->AddInstance(MeshPools[Pool].Fix*FTransform(V.RenderRotation,Visuals[Handle.Index].Position),true);
+        Notify();return IsCurrent(Handle)?Handle:FLiveWeaponHandle();
+    }
+    Visuals.Add(V);BeginHover(Handle.Index);RenderSlots[0].Add(Handle.Index);const auto* Def=Definition(ELiveWeaponType::Sword);
     WeaponMeshes[0]->AddInstance(WeaponTransform(V.RenderRotation,Visuals[Handle.Index].Position,Def?Def->MeshScale:FVector(.1f,.1f,.65f)),true);Notify();return IsCurrent(Handle)?Handle:FLiveWeaponHandle();
 }
 bool ALiveWeaponSwarm::SwitchParticipantWeapon(const FString& Id,ELiveWeaponType Type)
 {
     auto* S=Roster.Find(Id);if(!HasAuthority()||!S||uint8(Type)>3||(S->bPersonalSword&&Type!=ELiveWeaponType::Sword))return false;
     const int Old=uint8(S->WeaponType),New=uint8(Type);S->LastInteractionTime=Clock;if(Old==New)return true;
+    if(Visuals[S->Handle.Index].MeshPool!=INDEX_NONE)
+    {
+        // Pooled audience meshes stay as drawn; only the attack behaviour changes, so cancel the old sortie.
+        auto& V=Visuals[S->Handle.Index];++V.AttackToken;V.Phase=FLiveWeaponVisualState::EPhase::Wander;V.bPathValid=false;V.Target.Reset();V.HitTargets.Reset();V.bPendingArrow=false;V.bContinueCombo=false;
+        for(int I=0;I<Arrows.Num();++I)if(Arrows[I].bActive&&Arrows[I].Owner==S->Handle)ReleaseArrow(I);
+        return Roster.SwitchWeapon(Id,Type);
+    }
     const int Slot=S->Handle.Index,Instance=Visuals[Slot].InstanceIndex,Moved=RenderSlots[Old].Last();
     RenderSlots[Old].RemoveAtSwap(Instance);WeaponMeshes[Old]->RemoveInstance(Instance);if(Moved!=Slot)Visuals[Moved].InstanceIndex=Instance;
     auto& V=Visuals[Slot];V.InstanceIndex=RenderSlots[New].Num();RenderSlots[New].Add(Slot);
@@ -335,6 +362,7 @@ void ALiveWeaponSwarm::ResetParticipants()
     AlertLeases.Reset();
     if(PresentationMode==ELiveWeaponPresentationMode::Gameplay&&GetWorld()->GetGameInstance())for(const auto& S:Roster.GetStates())if(!S.bPersonalSword)GetWorld()->GetGameInstance()->GetSubsystem<UCultivationSubsystem>()->LeaveParticipant(S.Profile.ParticipantId);
     Roster.Reset();Visuals.Reset();for(int I=0;I<4;++I){RenderSlots[I].Reset();WeaponMeshes[I]->ClearInstances();}
+    for(int32 I=0;I<MeshPools.Num();++I){MeshPools[I].Slots.Reset();AudienceMeshComponents[I]->ClearInstances();}
     FreeArrows.Reset();for(int I=0;I<Arrows.Num();++I){Arrows[I]=FLiveArrowVisual();FreeArrows.Add(I);ArrowMesh->UpdateInstanceTransform(I,FTransform(FQuat::Identity,FVector::ZeroVector,FVector::ZeroVector),true,false,true);}
     ArrowMesh->MarkRenderStateDirty();TotalAttacks=TotalPrimaryLaunched=TotalFollowUpHits=0;MaxComboHitsObserved=0;
     EnsurePersonalSword();
@@ -346,7 +374,7 @@ bool ALiveWeaponSwarm::HasActiveAttacks()const
     if(GetActiveArrowCount()>0)return true;
     for(const auto& S:Roster.GetStates())
     {
-        if(!S.bParticipating)continue;
+        if(!S.bParticipating||S.bDelegated)continue;
         const auto Phase=Visuals[S.Handle.Index].Phase;
         if(Phase==ELiveWeaponFlightPhase::Strike||Phase==ELiveWeaponFlightPhase::Drift)return true;
     }
@@ -505,7 +533,8 @@ float ALiveWeaponSwarm::WeaponHeightMargin(ELiveWeaponType Type)const
     const auto* Def=Definition(Type);
     const FVector Scale=Def?Def->MeshScale:(Type==ELiveWeaponType::Sword?FVector(.1,.1,.65):FVector(.25));
     const UStaticMesh* Mesh=WeaponMeshes[uint8(Type)]->GetStaticMesh();
-    const float Radius=Mesh?float((Mesh->GetBounds().BoxExtent*Scale.GetAbs()).Size()+(Mesh->GetBounds().Origin*Scale).Size()):40;
+    float Radius=Mesh?float((Mesh->GetBounds().BoxExtent*Scale.GetAbs()).Size()+(Mesh->GetBounds().Origin*Scale).Size()):40;
+    if(MeshPools.Num())Radius=FMath::Max(Radius,AudienceMeshLength*.5f);
     return Radius+FMath::Max(0.f,FlightHeightMargin);
 }
 void ALiveWeaponSwarm::ShapeFlightHeight(int32 Slot,float EndFloorZ)
@@ -539,17 +568,24 @@ void ALiveWeaponSwarm::BeginDrift(int32 Slot,bool bContinue)
 bool ALiveWeaponSwarm::ApplyImpact(FLiveWeaponHandle ParticipantHandle,ALiveMonster* Target,FName SkillId,bool bFollowUp)
 {
     if(!IsCurrent(ParticipantHandle)||!IsValid(Target)||!Target->IsAlive())return false;
-    const auto S=Roster.GetStates()[ParticipantHandle.Index];if(!S.bParticipating)return false;const auto* Def=Definition(S.WeaponType);float Damage=Def?Def->Damage:1;
+    const auto S=Roster.GetStates()[ParticipantHandle.Index];if(!S.bParticipating)return false;const auto* Def=Definition(S.WeaponType);
+    // The core formula keeps the sword's attack (A) apart from the weapon's strike multiple (招式系数); a critical
+    // strike multiplies the latter by the normal spirit's 会心伤害 so skills still read it from BaseDamage.
+    FLiveHit Hit;Hit.Attack=1;Hit.SkillCoefficient=Def?Def->Damage:1;
     const FString OwnerId=GetProgressionOwnerId(S.Profile.ParticipantId);
     if(GetWorld()->GetGameInstance())
     {
         const auto Stats=GetWorld()->GetGameInstance()->GetSubsystem<UCultivationSubsystem>()->GetParticipantSnapshot(OwnerId);
         if(!Stats.ParticipantId.IsEmpty())
         {
-            Damage=float(FMath::Min(1.e30,FMath::Max(0.0,Stats.Attributes.Attack+Stats.Attributes.SpiritDamage)*Damage));
-            if(DamageRandom.FRand()<Stats.Attributes.CriticalChance)Damage*=2;
+            Hit.Attack=float(FMath::Min(1.e30,FMath::Max(0.0,Stats.Attributes.Attack+Stats.Attributes.SpiritDamage)));Hit.AttackerRealm=Stats.RealmIndex;
+            if(DamageRandom.FRand()<Stats.Attributes.CriticalChance)Hit.SkillCoefficient*=LiveSpecialSwords::CriticalDamageAt(ELiveSpecialSword::None,Stats.RealmIndex);
         }
+        // The anchor's own sword carries the equipped 仙途 methods (疾锋/回响...), which scale the strike.
+        if(S.bPersonalSword&&Hit.Attack>0)if(auto* XianTu=GetWorld()->GetGameInstance()->GetSubsystem<UXianTuSubsystem>())
+            Hit.SkillCoefficient=XianTu->ModifyPersonalHit(Target,Hit.Attack*Hit.SkillCoefficient,OwnerId)/Hit.Attack;
     }
+    const float Damage=Hit.Attack*Hit.SkillCoefficient;
     const uint32 Token=Visuals[ParticipantHandle.Index].AttackToken;
     const auto StillCurrent=[&](){return IsCurrent(ParticipantHandle)&&Roster.GetStates()[ParticipantHandle.Index].WeaponType==S.WeaponType&&Visuals[ParticipantHandle.Index].AttackToken==Token;};
     bool Applied=false;
@@ -562,13 +598,13 @@ bool ALiveWeaponSwarm::ApplyImpact(FLiveWeaponHandle ParticipantHandle,ALiveMons
         if(Applied)Combat.CommitSkill(ParticipantHandle,SkillId,Clock);
     }
     if(!StillCurrent())return false;
-    if(!Applied&&IsValid(Target)&&Target->IsAlive())Applied=Target->ApplyWeaponDamage(Damage,OwnerId);
+    if(!Applied&&IsValid(Target)&&Target->IsAlive())Applied=Target->ApplyWeaponHit(Hit,OwnerId);
     if(Applied&&StillCurrent()){++TotalAttacks;if(bFollowUp)++TotalFollowUpHits;}
     return Applied;
 }
 void ALiveWeaponSwarm::AdvanceWeapon(int32 Slot,float DeltaSeconds)
 {
-    if(!Roster.GetStates()[Slot].bParticipating)return;
+    if(!Roster.GetStates()[Slot].bParticipating||Roster.GetStates()[Slot].bDelegated)return;
     const auto Handle=Roster.GetStates()[Slot].Handle;
     using EPhase=FLiveWeaponVisualState::EPhase;
     if(Visuals[Slot].Phase==EPhase::Alert){AdvanceAlert(Slot,DeltaSeconds);return;}
@@ -686,7 +722,7 @@ void ALiveWeaponSwarm::Tick(float DeltaSeconds)
         {
             if(GetWorld()->GetGameInstance())if(auto* Health=GetWorld()->GetGameInstance()->GetSubsystem<UCultivationSubsystem>()->GetAnchorHealth();Health&&Health->bDead)return false;
             const auto& V=Visuals[S.Handle.Index];
-            if(GetAlertLeaseCount(S.Profile.ParticipantId)>0)return false;
+            if(S.bDelegated||GetAlertLeaseCount(S.Profile.ParticipantId)>0)return false;
             if(V.bNeedsRecovery||V.Phase==FLiveWeaponVisualState::EPhase::Strike||V.Phase==FLiveWeaponVisualState::EPhase::Drift)return false;
             return (S.WeaponType!=ELiveWeaponType::Bow||(!V.bPendingArrow&&!FreeArrows.IsEmpty()))&&FindPrimaryTarget(S.WeaponType,V.Position,Targets);
         };
@@ -732,7 +768,7 @@ void ALiveWeaponSwarm::UpdatePresentation(float DeltaSeconds)
         auto& Transforms=PresentationTransforms[Type];Transforms.Reset(RenderSlots[Type].Num());const auto* Def=Definition(ELiveWeaponType(Type));
         for(int Slot:RenderSlots[Type])
         {
-            if(!Roster.GetStates()[Slot].bParticipating){Transforms.Add(FTransform(FQuat::Identity,FVector::ZeroVector,FVector::ZeroVector));continue;}
+            if(!Roster.GetStates()[Slot].bParticipating||Roster.GetStates()[Slot].bDelegated){Transforms.Add(FTransform(FQuat::Identity,FVector::ZeroVector,FVector::ZeroVector));continue;}
             auto& V=Visuals[Slot];FQuat Desired=V.Velocity.SizeSquared()<225?V.IdleRotation:FRotationMatrix::MakeFromZ(V.Velocity.GetSafeNormal()).ToQuat();
             if(Type==1&&(V.Phase==FLiveWeaponVisualState::EPhase::Strike||V.Phase==FLiveWeaponVisualState::EPhase::Drift))Desired=Desired*FQuat(FVector::UpVector,float(Clock)*8);
             V.RenderRotation=FMath::QInterpTo(V.RenderRotation,Desired,DeltaSeconds,8);const FQuat Rotation=V.RenderRotation;
@@ -740,6 +776,22 @@ void ALiveWeaponSwarm::UpdatePresentation(float DeltaSeconds)
             if(bDrawAttackHitboxes&&V.Phase==FLiveWeaponVisualState::EPhase::Strike)DrawDebugBox(GetWorld(),V.Position,Def?Def->AttackBoxHalfExtent:FVector(14,14,32),Rotation,FColor::Cyan,false,0,0,1);
         }
         if(!Transforms.IsEmpty())WeaponMeshes[Type]->BatchUpdateInstancesTransforms(0,Transforms,true,true,false);
+    }
+    for(int32 Pool=0;Pool<MeshPools.Num();++Pool)
+    {
+        const auto& P=MeshPools[Pool];if(P.Slots.IsEmpty())continue;
+        PoolTransforms.Reset(P.Slots.Num());
+        for(const int32 Slot:P.Slots)
+        {
+            const auto& State=Roster.GetStates()[Slot];
+            if(!State.bParticipating||State.bDelegated){PoolTransforms.Add(FTransform(FQuat::Identity,FVector::ZeroVector,FVector::ZeroVector));continue;}
+            auto& V=Visuals[Slot];
+            const FQuat Desired=V.Velocity.SizeSquared()<225?V.IdleRotation:FRotationMatrix::MakeFromZ(V.Velocity.GetSafeNormal()).ToQuat();
+            V.RenderRotation=FMath::QInterpTo(V.RenderRotation,Desired,DeltaSeconds,8);
+            PoolTransforms.Add(P.Fix*FTransform(V.RenderRotation,V.Position));
+            if(bDrawAttackHitboxes&&V.Phase==FLiveWeaponVisualState::EPhase::Strike){const auto* Def=Definition(State.WeaponType);DrawDebugBox(GetWorld(),V.Position,Def?Def->AttackBoxHalfExtent:FVector(14,14,32),V.RenderRotation,FColor::Cyan,false,0,0,1);}
+        }
+        AudienceMeshComponents[Pool]->BatchUpdateInstancesTransforms(0,PoolTransforms,true,true,false);
     }
     if(GetActiveArrowCount()==0&&!bArrowsNeedRenderUpdate)return;
     auto& ArrowTransforms=ArrowPresentationTransforms;ArrowTransforms.Reset(Arrows.Num());
@@ -751,4 +803,69 @@ void ALiveWeaponSwarm::UpdatePresentation(float DeltaSeconds)
         if(bDrawAttackHitboxes&&A.bActive&&!A.bHit)DrawDebugBox(GetWorld(),A.Position,Def?Def->AttackBoxHalfExtent:FVector(14,14,32),Rotation,FColor::Yellow,false,0,0,1);
     }
     ArrowMesh->BatchUpdateInstancesTransforms(0,ArrowTransforms,true,true,false);bArrowsNeedRenderUpdate=false;
+}
+
+void ALiveWeaponSwarm::LoadAudienceMeshes()
+{
+    MeshPools.Reset();
+    for(UInstancedStaticMeshComponent* C:AudienceMeshComponents)if(C)C->DestroyComponent();
+    AudienceMeshComponents.Reset();
+    if(!bRandomAudienceMeshes||AudienceMeshDirectory.IsEmpty())return;
+    IAssetRegistry& Registry=FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get();
+    TArray<FAssetData> Assets;
+    Registry.GetAssetsByPath(FName(*AudienceMeshDirectory),Assets,true);
+    Assets.Sort([](const FAssetData& A,const FAssetData& B){return A.PackageName.LexicalLess(B.PackageName);});
+    for(const FAssetData& Asset:Assets)
+    {
+        if(Asset.AssetClassPath!=UStaticMesh::StaticClass()->GetClassPathName())continue;
+        UStaticMesh* Mesh=Cast<UStaticMesh>(Asset.GetAsset());if(!Mesh)continue;
+        const FBox Box=Mesh->GetBoundingBox();const FVector Size=Box.GetSize();
+        // Longest axis becomes the flight axis (+Z); the end farther from the grip pivot leads.
+        int32 Axis=2;if(Size.X>Size[Axis])Axis=0;if(Size.Y>Size[Axis])Axis=1;
+        FVector Tip=FVector::ZeroVector;Tip[Axis]=FMath::Abs(Box.Min[Axis])>FMath::Abs(Box.Max[Axis])?-1:1;
+        const FQuat Rotation=FQuat::FindBetweenNormals(Tip,FVector::UpVector);
+        const float Scale=AudienceMeshLength/FMath::Max(1.f,float(Size[Axis]));
+        FAudienceMeshPool Pool;Pool.Fix=FTransform(Rotation,-Rotation.RotateVector(Box.GetCenter()*Scale),FVector(Scale));Pool.Label=Asset.AssetName.ToString();
+        auto* Component=NewObject<UInstancedStaticMeshComponent>(this,FName(*FString::Printf(TEXT("AudienceMesh%d"),MeshPools.Num())));
+        Component->SetupAttachment(RootComponent);Component->SetStaticMesh(Mesh);Component->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        Component->SetGenerateOverlapEvents(false);Component->SetCanEverAffectNavigation(false);Component->SetCastShadow(bWeaponCastShadows);Component->SetRemoveSwap();
+        Component->RegisterComponent();
+        AudienceMeshComponents.Add(Component);MeshPools.Add(MoveTemp(Pool));
+    }
+}
+
+int32 ALiveWeaponSwarm::ChooseMeshPool(const FString& Id)const
+{
+    if(MeshPools.IsEmpty())return INDEX_NONE;
+    // Random across viewers, stable for one viewer: rejoining keeps the same weapon.
+    FRandomStream Stream(int32(GetTypeHash(Id)*2654435761u));
+    return Stream.RandRange(0,MeshPools.Num()-1);
+}
+
+FString ALiveWeaponSwarm::GetParticipantMeshName(const FString& Id)const
+{
+    const auto* S=Roster.Find(Id);if(!S||!Visuals.IsValidIndex(S->Handle.Index))return FString();
+    const int32 Pool=Visuals[S->Handle.Index].MeshPool;return MeshPools.IsValidIndex(Pool)?MeshPools[Pool].Label:FString();
+}
+
+bool ALiveWeaponSwarm::SetParticipantDelegated(const FString& Id,bool bDelegated)
+{
+    auto* S=Roster.Find(Id);if(!S||!Visuals.IsValidIndex(S->Handle.Index))return false;
+    if(S->bDelegated==bDelegated)return true;
+    S->bDelegated=bDelegated;
+    const int32 Slot=S->Handle.Index;auto& V=Visuals[Slot];
+    ++V.AttackToken;V.bPathValid=false;V.Target.Reset();V.HitTargets.Reset();V.bPendingArrow=false;V.bContinueCombo=false;V.SkillId=NAME_None;V.ComboHits=0;
+    for(int32 I=0;I<Arrows.Num();++I)if(Arrows[I].bActive&&Arrows[I].Owner==S->Handle)ReleaseArrow(I);
+    if(!bDelegated&&S->bParticipating)
+    {
+        V.Velocity=FVector::ZeroVector;V.bNeedsRecovery=false;V.RecoveryRemaining=0;V.ReferenceFloorZ=AnchorFootZ();
+        if(WantsAlert(Slot))BeginReturn(Slot,false);else BeginWander(Slot);
+    }
+    return true;
+}
+
+void ALiveWeaponSwarm::SetDelegatedPosition(const FString& Id,const FVector& Position)
+{
+    auto* S=Roster.Find(Id);if(!S||!S->bDelegated||!Visuals.IsValidIndex(S->Handle.Index))return;
+    auto& V=Visuals[S->Handle.Index];V.Position=Position;V.Velocity=FVector::ZeroVector;
 }

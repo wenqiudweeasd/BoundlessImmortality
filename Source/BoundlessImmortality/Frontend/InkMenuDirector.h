@@ -13,7 +13,7 @@ class UCultivationGameplayComponent;
 class UQiCultivationComponent;
 class ALiveWeaponSwarm;
 class ALiveGMOverlay;
-class UInkFrontendWidget;
+class UInkGameUIWidget;
 class UStaticMesh;
 class FComponentInstanceDataCache;
 class ULiveAudienceAdapterComponent;
@@ -34,7 +34,6 @@ public:
 
     UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="主菜单|场景") TObjectPtr<AActor> PresentationActor;
     UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="主菜单|场景") TSubclassOf<ALiveWeaponSwarm> SwarmClass;
-    UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="主菜单|界面") TSubclassOf<UInkFrontendWidget> WidgetClass;
     /** Empty uses the map GameMode's default pawn at PlayerStart. The presentation class is never playable. */
     UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="主菜单|游戏") TSubclassOf<APawn> GameplayPawnClass;
     UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="主菜单|场景",meta=(ClampMin="0.1",Units="s")) float PresentationInterval=10.f;
@@ -46,7 +45,8 @@ public:
     UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="主菜单|剑灵",meta=(DisplayName="警戒半径范围",Units="cm")) FVector2D PresentationAlertRadius=FVector2D(42,58);
     UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="主菜单|剑灵",meta=(DisplayName="警戒高度范围",Units="cm")) FVector2D PresentationAlertHeight=FVector2D(-20,30);
     UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="主菜单|剑灵",meta=(DisplayName="闲游曲线幅度",ClampMin="0",ClampMax="1")) float PresentationPathScale=.2f;
-    UPROPERTY(Transient,VisibleAnywhere,BlueprintReadOnly,Category="主菜单|状态") TObjectPtr<UInkFrontendWidget> FrontendWidget;
+    /** The Slate xianxia UI (InkUI). */
+    UPROPERTY(Transient,VisibleAnywhere,BlueprintReadOnly,Category="主菜单|状态") TObjectPtr<UInkGameUIWidget> GameUI;
     UPROPERTY(Transient,VisibleAnywhere,BlueprintReadOnly,Category="主菜单|状态") TObjectPtr<ALiveWeaponSwarm> PresentationSwarm;
     UPROPERTY(Transient,VisibleAnywhere,BlueprintReadOnly,Category="游戏|直播") TObjectPtr<ALiveWeaponSwarm> GameplaySwarm;
     UPROPERTY(Transient,VisibleAnywhere,BlueprintReadOnly,Category="游戏|直播") TObjectPtr<ULiveAudienceAdapterComponent> GameplayAudience;
@@ -155,6 +155,8 @@ private:
     double PresentationStartedAt=0;
     bool TryEnterMenu();
     bool EnsureFrontend();
+    void ShowFrontendPage(bool bMainMenu);
+    void ShowFrontendFeedback(const FText& Message);
     bool EnsurePresentationPawn();
     bool IsGameplayPawnCandidate(const APawn* Pawn)const;
     void ConfigurePresentationSwarm();

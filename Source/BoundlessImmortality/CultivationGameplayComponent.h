@@ -72,6 +72,12 @@ public:
     /** Plays the existing meditation loop on a menu actor without possessing it or polling keys. */
     UFUNCTION(BlueprintCallable, Category="修炼|菜单演示") bool SetMenuPresentation(bool bEnabled);
     UFUNCTION(BlueprintPure, Category="修炼|菜单演示") bool IsMenuPresentation()const{return bMenuPresentation;}
+    /**
+     * 渡劫: the anchor sits down in meditation through the usual ink transition and can neither move, rise, nor charge
+     * until it is released, which plays the 收功 transition back to standing. Works on any map (UXianTuSubsystem drives it).
+     */
+    UFUNCTION(BlueprintCallable, Category="修炼|渡劫") bool SetTribulationMeditation(bool bOn);
+    UFUNCTION(BlueprintPure, Category="修炼|渡劫") bool IsTribulationMeditation()const{return bTribulationLock;}
     UFUNCTION(BlueprintCallable, Category="修炼|输入") void SetFrontendInputBlocked(bool bBlocked);
     UPROPERTY(Transient,VisibleAnywhere,BlueprintReadOnly,Category="修炼|输入") bool bFrontendInputBlocked=false;
     UFUNCTION(BlueprintPure, Category="修炼|状态") bool IsMovementLocked() const { return State!=ECultivationActionState::Idle; }
@@ -92,6 +98,8 @@ private:
     UPROPERTY(Transient) TObjectPtr<UMaterialInstanceDynamic> InkMaterial;
     UPROPERTY(Transient) TObjectPtr<UCultivationInkCaptionWidget> InkCaption;
     TWeakObjectPtr<APlayerController> BoundController;
+    /** The pawn's controller while the tribulation holds it still, when it is not the bound one (maps without key polling). */
+    TWeakObjectPtr<APlayerController> LockedController;
     EAnimationMode::Type PreviousAnimationMode=EAnimationMode::AnimationBlueprint;
     EMovementMode PreviousMovementMode=MOVE_Walking;
     uint8 PreviousCustomMovementMode=0;
@@ -104,6 +112,7 @@ private:
     bool bExitMeditationRequested=false;
     bool bMeditationPoseSwitched=false;
     bool bMenuPresentation=false;
+    bool bTribulationLock=false;
     bool bTickBeforeMenuPresentation=true;
     EVisibilityBasedAnimTickOption AnimationTickBeforeMenuPresentation=EVisibilityBasedAnimTickOption::OnlyTickPoseWhenRendered;
     float ToggleHeldSeconds=0;
