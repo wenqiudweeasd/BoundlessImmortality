@@ -3,11 +3,8 @@
 #include "LiveWeapons/SpecialSwords/LiveSwordVfx.h"
 #include "LiveWeapons/SpecialSwords/LiveAnchorBuffSubsystem.h"
 #include "LiveWeapons/LiveWeaponSwarm.h"
-#include "LiveWeapons/LiveTitleEffectsComponent.h"
 #include "Cultivation/CultivationSubsystem.h"
-#include "Frontend/InkMenuDirector.h"
 #include "GameFramework/Pawn.h"
-#include "InkUI/InkGameUIWidget.h"
 #include "JsonObjectConverter.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
@@ -185,7 +182,7 @@ void ULiveSpecialSwordComponent::SaveGrowth()
 void ULiveSpecialSwordOverlay::Configure(ULiveSpecialSwordComponent* InOwner)
 {
     Owner=InOwner;SetVisibility(ESlateVisibility::HitTestInvisible);SetIsFocusable(false);
-    Font=LoadObject<UFont>(nullptr,TEXT("/Game/UI/Ink/Fonts/Shared/F_InkBody.F_InkBody"),nullptr,LOAD_NoWarn|LOAD_Quiet);
+    Font=LoadObject<UFont>(nullptr,TEXT("/Game/LiveWeapons/Fonts/F_LiveNames.F_LiveNames"),nullptr,LOAD_NoWarn|LOAD_Quiet);
 }
 
 namespace
@@ -200,8 +197,7 @@ namespace
 int32 ULiveSpecialSwordOverlay::NativePaint(const FPaintArgs& Args,const FGeometry& Geometry,const FSlateRect& CullingRect,FSlateWindowElementList& Out,int32 Layer,const FWidgetStyle& Style,bool bParentEnabled)const
 {
     const ULiveSpecialSwordComponent* O=Owner.Get();APlayerController* PC=GetOwningPlayer();
-    if(!O||!PC||ULiveTitleEffectsComponent::IsPresentationBlocked(GetWorld(),true))return Layer;
-    for(TActorIterator<AInkMenuDirector> It(GetWorld());It;++It)if(It->GameUI&&!It->GameUI->GetTopRoute().IsNone())return Layer;
+    if(!O||!PC)return Layer;
     const float Scale=FMath::Max(.01f,UWidgetLayoutLibrary::GetViewportScale(this));
     const FSlateBrush* White=FCoreStyle::Get().GetBrush("WhiteBrush");
     auto Box=[&](int32 L,FVector2D P,FVector2D S,FLinearColor C)

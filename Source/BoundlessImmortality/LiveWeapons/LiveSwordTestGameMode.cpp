@@ -1,8 +1,5 @@
 #include "LiveSwordTestGameMode.h"
-#include "LiveSwordTestPanel.h"
-#include "LiveGMOverlay.h"
 #include "LiveWeaponSwarm.h"
-#include "LiveAudienceAdapterComponent.h"
 #include "LiveMonster.h"
 #include "LiveScarecrow.h"
 #include "LiveWeapons/SpecialSwords/LiveSpecialSword.h"
@@ -12,11 +9,11 @@
 #include "EngineUtils.h"
 #include "Cultivation/CultivationSubsystem.h"
 #include "Cultivation/CultivationHealthComponent.h"
-#include "LiveInteractionSubsystem.h"
 #include "XianTu/XianTuSubsystem.h"
 #include "XianTu/XianTuTribulationStorm.h"
 #include "TimerManager.h"
 #include "Misc/CommandLine.h"
+#include "Misc/Guid.h"
 #include "Misc/Parse.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
@@ -24,21 +21,16 @@
 #include "GameFramework/PlayerController.h"
 namespace
 {
-    // Raw ids of the range's test viewers, one per special sword; the host scopes them as local viewers.
-    FString SwordRangeViewer(ELiveSpecialSword Kind){return FString::Printf(TEXT("sword_range_%d"),int32(Kind));}
+    FString SwordRangeViewer(ELiveSpecialSword Kind){return FString::Printf(TEXT("local:sword_range_%d"),int32(Kind));}
 }
 ALiveSwordTestGameMode::ALiveSwordTestGameMode(){InitialMonsters=0;bOrthographicCamera=false;bAnchorPersonalSword=false;}
 void ALiveSwordTestGameMode::InitGame(const FString& MapName,const FString& Options,FString& ErrorMessage)
 {
     Super::InitGame(MapName,Options,ErrorMessage);
 #if !UE_BUILD_SHIPPING
-    // Checks can play the range through the main game's orthographic camera (the controller reads this on possess).
     if(FParse::Param(FCommandLine::Get(),TEXT("SwordRangeOrtho")))bOrthographicCamera=true;
 #endif
-    // Loaded only when the range is played: a constructor-time load would pull the cultivator (and its animation
-    // blueprint) into every editor and commandlet start.
     if(UClass* Pawn=CultivatorClass.LoadSynchronous())DefaultPawnClass=Pawn;
-    // The rules live on the game instance, so this lasts for this play session only.
     if(!bGiftAttributeBonuses)if(auto* Cultivation=GetGameInstance()?GetGameInstance()->GetSubsystem<UCultivationSubsystem>():nullptr)
     {
         Cultivation->Rules.JetFlatBonus=0;Cultivation->Rules.SoulPersonalMultiplier=1;
@@ -48,44 +40,45 @@ void ALiveSwordTestGameMode::InitGame(const FString& MapName,const FString& Opti
 void ALiveSwordTestGameMode::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
-    // The parent spawns the swarm once the pawn exists and then stops ticking; keep going until the test setup ran.
     if(bTestReady||!Swarm)return;
-    SetActorTickEnabled(true);
-    if(!Overlay){FActorSpawnParameters Params;Params.Owner=this;Overlay=GetWorld()->SpawnActor<ALiveGMOverlay>(ALiveGMOverlay::StaticClass(),FTransform::Identity,Params);return;}
-    // The overlay borrows this mode's swarm and audience on its own tick; GM actions sent before that would make it spawn its own pair.
-    if(Overlay->Swarm!=Swarm)return;
     bTestReady=true;SetActorTickEnabled(false);
-    // The range's test viewers start from nothing, so the five swords compare by their sheets alone.
     if(Swarm->SpecialSwords)for(const ELiveSpecialSword Kind:LiveSpecialSwords::All())Swarm->SpecialSwords->ResetGrowth(ViewerId(Kind));
     if(auto* Cultivation=GetGameInstance()?GetGameInstance()->GetSubsystem<UCultivationSubsystem>():nullptr)
         if((AnchorHealth=Cultivation->GetAnchorHealth()).IsValid())AnchorHealth->OnDied.AddUniqueDynamic(this,&ALiveSwordTestGameMode::HandleAnchorDied);
-    if(!Overlay->ExecuteGMAction(TEXT("EnableTest")))return;
     GetWorldTimerManager().SetTimer(RealmTimer,this,&ALiveSwordTestGameMode::HoldSwordRealms,.25f,true);
-    if(ExtraViewers>0)Audience->AppendSimulatedAudience(ExtraViewers);
+    for(int32 I=0;I<ExtraViewers;++I)
+    {
+        FLiveParticipantProfile Profile;
+        Profile.ParticipantId=FString::Printf(TEXT("local:range_spirit_%d"),I);
+        Profile.DisplayName=FString::Printf(TEXT("剑灵%d"),I+1);
+        Swarm->JoinParticipant(Profile);
+    }
     if(bSummonSpecialSwords)SetAllSpecialSwords(true);
-    if(bShowSwordPanel)if(APlayerController* PC=GetWorld()->GetFirstPlayerController())
-        if((SwordPanel=CreateWidget<ULiveSwordTestPanel>(PC))){SwordPanel->Configure(this);SwordPanel->AddToViewport(50);}
 }
 void ALiveSwordTestGameMode::HandleAnchorDied(){GetWorldTimerManager().SetTimer(ReviveTimer,this,&ALiveSwordTestGameMode::ReviveAnchor,FMath::Max(.5f,AnchorReviveDelay),false);}
 void ALiveSwordTestGameMode::ReviveAnchor(){if(auto* Health=AnchorHealth.Get();Health&&Health->bDead)Health->Revive();}
 FString ALiveSwordTestGameMode::ViewerId(ELiveSpecialSword Kind)const
 {
-    const auto* Host=GetGameInstance()?GetGameInstance()->GetSubsystem<ULiveInteractionSubsystem>():nullptr;
-    return Host&&Kind!=ELiveSpecialSword::None?Host->GetScopedUserId(SwordRangeViewer(Kind)):FString();
+    return Kind!=ELiveSpecialSword::None?SwordRangeViewer(Kind):FString();
 }
 bool ALiveSwordTestGameMode::SetSpecialSword(ELiveSpecialSword Kind,bool bPresent)
 {
-    auto* Host=GetGameInstance()?GetGameInstance()->GetSubsystem<ULiveInteractionSubsystem>():nullptr;
     auto* Cultivation=GetGameInstance()?GetGameInstance()->GetSubsystem<UCultivationSubsystem>():nullptr;
-    if(Kind==ELiveSpecialSword::None||!Swarm||!Audience||!Host||!Cultivation)return false;
-    const FString Raw=SwordRangeViewer(Kind),Id=Host->GetScopedUserId(Raw),Name=LiveSpecialSwords::Name(Kind).ToString();
-    // Leaving releases the special sword on the manager's next scan and leaves no audience sword behind.
+    if(Kind==ELiveSpecialSword::None||!Swarm||!Cultivation)return false;
+    const FString Id=ViewerId(Kind),Name=LiveSpecialSwords::Name(Kind).ToString();
     if(!bPresent)return Swarm->RemoveParticipant(Id);
-    if(!Audience->SimulateComment(Raw,Name,TEXT("加入")))return false;
+    FLiveParticipantProfile Profile;Profile.ParticipantId=Id;Profile.DisplayName=Name;
+    if(!Swarm->JoinParticipant(Profile).IsValid())return false;
     HoldSwordRealms();
-    // A returning viewer still wears its sword title; gift only when it does not, so re-adding stays quiet.
     if(LiveSpecialSwords::FromTitle(Cultivation->GetParticipantSnapshot(Id).TitleId)==Kind)return true;
-    return Host->SimulateGift(Raw,Name,LiveSpecialSwords::GiftName(Kind),1);
+    FCultivationGiftEvent Gift;
+    Gift.ParticipantId=Id;
+    Gift.MessageId=FGuid::NewGuid().ToString(EGuidFormats::Digits);
+    Gift.GiftId=LiveSpecialSwords::GiftOf(Kind);
+    Gift.Count=1;
+    Gift.EventUtcSeconds=UCultivationSubsystem::UtcNow();
+    Gift.bDevelopment=true;
+    return Cultivation->ProcessGift(Gift);
 }
 void ALiveSwordTestGameMode::HoldSwordRealms()
 {
@@ -96,7 +89,6 @@ void ALiveSwordTestGameMode::HoldSwordRealms()
         const int32 Want=GetSwordRealm(Kind);const FCultivationParticipantSnapshot S=Cultivation->GetParticipantSnapshot(Id);
         if(S.ParticipantId.IsEmpty()||S.RealmIndex==Want)continue;
 #if !UE_BUILD_SHIPPING
-        // Hits and kills grow a viewer's cultivation until it breaks through; emptying it keeps the sword where it was put.
         Cultivation->DebugSetRealm(Id,Want,false,0);Cultivation->ApplyCultivationLoss(Id,1.e30);
 #endif
     }
@@ -116,7 +108,6 @@ int32 ALiveSwordTestGameMode::GetCommonSwordRealm()const
 }
 void ALiveSwordTestGameMode::StepSwordRealms(int32 Direction)
 {
-    // From a mixed set the step starts at the lowest sword, so one press brings them all together.
     int32 From=33;for(const ELiveSpecialSword Kind:LiveSpecialSwords::All())From=FMath::Min(From,GetSwordRealm(Kind));
     const int32 Common=GetCommonSwordRealm();
     const TArray<int32>& Stops=LiveSwordCodex::MajorStops();int32 Next=Common<0?From:Common;
@@ -195,15 +186,17 @@ int32 ALiveSwordTestGameMode::GetAnchorRealm()const
 bool ALiveSwordTestGameMode::StartTribulationTest()
 {
     const auto* Cultivation=GetGameInstance()?GetGameInstance()->GetSubsystem<UCultivationSubsystem>():nullptr;
-    if(!Overlay||!Cultivation||IsTribulationActive())return false;
+    auto* X=GetGameInstance()?GetGameInstance()->GetSubsystem<UXianTuSubsystem>():nullptr;
+    if(!X||!Cultivation||IsTribulationActive())return false;
     if(RehearsalRealm==INDEX_NONE)
     {
         RehearsalRealm=Cultivation->GetParticipantSnapshot(Cultivation->GetAnchorId()).RealmIndex;
-        if(const UXianTuSubsystem* X=GetGameInstance()->GetSubsystem<UXianTuSubsystem>())
-        {RehearsalFailures=X->GetState()->Trib.Failures;RehearsalDaoHeart=X->GetState()->Trib.DaoHeartUntil;}
+        RehearsalFailures=X->GetState()->Trib.Failures;
+        RehearsalDaoHeart=X->GetState()->Trib.DaoHeartUntil;
     }
     SetTribulationOutcome(TribOutcome);
-    const bool bLaunched=Overlay->ExecuteGMAction(TEXT("XT_Trib"))&&Overlay->ExecuteGMAction(TEXT("XT_TribStart"));
+    FText Msg;
+    const bool bLaunched=X->DebugPrepareTribulation()&&X->Execute(TEXT("TribStart"),{},Msg);
     if(bLaunched)GetWorldTimerManager().SetTimer(RehearsalTimer,this,&ALiveSwordTestGameMode::EndRehearsal,1.f,true);
     else EndRehearsal();
     return bLaunched;
@@ -215,7 +208,6 @@ void ALiveSwordTestGameMode::EndRehearsal()
 #if !UE_BUILD_SHIPPING
     if(auto* Cultivation=GetGameInstance()?GetGameInstance()->GetSubsystem<UCultivationSubsystem>():nullptr;Cultivation&&RehearsalRealm!=INDEX_NONE)
         Cultivation->DebugSetRealm(Cultivation->GetAnchorId(),RehearsalRealm,false,0);
-    // A rehearsal leaves no pity and no broken Dao heart behind, so the next one starts from the same odds.
     if(auto* X=GetGameInstance()?GetGameInstance()->GetSubsystem<UXianTuSubsystem>():nullptr;X&&RehearsalRealm!=INDEX_NONE)
         X->DebugRestoreTribulation(RehearsalFailures,RehearsalDaoHeart);
 #endif
@@ -223,15 +215,13 @@ void ALiveSwordTestGameMode::EndRehearsal()
 }
 bool ALiveSwordTestGameMode::AssistTribulation()
 {
-    const UXianTuSubsystem* X=GetGameInstance()?GetGameInstance()->GetSubsystem<UXianTuSubsystem>():nullptr;
-    if(!X||!Audience||X->GetState()->Trib.State!=EXianTuTribState::Trial)return false;
-    // Ten new helpers per press only comment "助力": nobody joins the swarm, so the range keeps its swords, nameplates and
-    // gift-free numbers (the GM button instead reuses viewers in the swarm, and simulated viewers send random gifts).
+    auto* X=GetGameInstance()?GetGameInstance()->GetSubsystem<UXianTuSubsystem>():nullptr;
+    if(!X||X->GetState()->Trib.State!=EXianTuTribState::Trial)return false;
     const int32 Before=X->GetState()->Trib.Assists.Num();
     for(int32 I=0;I<10;++I)
     {
         const int32 N=++AssistHelpers;
-        Audience->SimulateComment(FString::Printf(TEXT("trib_helper_%d"),N),FString::Printf(TEXT("护法%d"),N),TEXT("助力"));
+        X->AddTribulationAssist(FString::Printf(TEXT("local:trib_helper_%d"),N),FString::Printf(TEXT("护法%d"),N));
     }
     return X->GetState()->Trib.Assists.Num()>Before;
 }
@@ -240,7 +230,6 @@ FText ALiveSwordTestGameMode::GetTribulationStatus()const
     const UXianTuSubsystem* X=GetGameInstance()?GetGameInstance()->GetSubsystem<UXianTuSubsystem>():nullptr;if(!X)return FText::GetEmpty();
     const FXianTuTribulation& T=X->GetState()->Trib;const AXianTuTribulationStorm* Storm=X->GetTribulationStorm();
     const FString Bolts=Storm?FString::Printf(TEXT(" · 已落雷 %d 道 · 共伤 %.0f"),Storm->GetBoltsLanded(),Storm->GetDamageDealt()):FString();
-    // 七星挡劫: the odds while the trial runs (the strongest 七星光芒剑 against the realm being reached), then the roll's outcome.
     const auto* Cultivation=GetGameInstance()->GetSubsystem<UCultivationSubsystem>();
     const int32 WardRealm=X->StarWardRealm();
     const FString WardOdds=WardRealm>=0?FString::Printf(TEXT(" · 七星挡劫 %g%%"),XianTuRules::StarWardChance(WardRealm,T.FromRealm)/100.0):FString();
@@ -266,7 +255,6 @@ FText ALiveSwordTestGameMode::GetTribulationStatus()const
             FMath::Max(0.0,XianTuRules::TribBacklash-T.Elapsed),T.BacklashStrikes,XianTuRules::TribBacklashStrikes,
             AXianTuTribulationStorm::BacklashFraction(Next,Intensity)*100.f,T.BacklashDamage,Ward.IsEmpty()?TEXT(" · 无七星护持"):*Ward));
     }
-    // A settled result stays in the save; it only shows while it is being revealed or its storm still fades.
     case EXianTuTribState::Succeeded:return T.RevealRemaining>0||Storm?FText::FromString(TEXT("渡劫成功 · 劫云散去")+Bolts):FText::GetEmpty();
     case EXianTuTribState::Failed:
         if(T.RevealRemaining<=0&&!Storm)return FText::GetEmpty();

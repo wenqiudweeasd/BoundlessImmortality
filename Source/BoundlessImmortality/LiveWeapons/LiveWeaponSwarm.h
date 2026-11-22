@@ -3,10 +3,8 @@
 #include "GameFramework/Actor.h"
 #include "LiveWeaponCombatModel.h"
 #include "LiveWeaponTrajectory.h"
-#include "Cultivation/CultivationNameplate.h"
 #include "LiveWeaponSwarm.generated.h"
 class UInstancedStaticMeshComponent;
-class ULiveTitleEffectsComponent;
 class ULiveSpecialSwordComponent;
 class ULiveWeaponDefinition;
 class ULiveWeaponSkill;
@@ -63,8 +61,6 @@ class BOUNDLESSIMMORTALITY_API ALiveWeaponSwarm : public AActor
 {
     GENERATED_BODY()
 public:
-    UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="Presentation|Nameplates") FCultivationNameplateDistanceSettings NameplateDistanceSettings;
-    UPROPERTY(VisibleAnywhere,BlueprintReadOnly,Category="Presentation|Titles") TObjectPtr<ULiveTitleEffectsComponent> TitleEffects;
     UPROPERTY(VisibleAnywhere,BlueprintReadOnly,Category="剑灵|特殊剑") TObjectPtr<ULiveSpecialSwordComponent> SpecialSwords;
     /** The anchor's own sword spirit (本命剑) flies with the audience swords; turning it off removes it (the sword test range does). */
     UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="剑灵|本命剑",meta=(DisplayName="主播本命剑灵")) bool bAnchorPersonalSword=true;
@@ -157,8 +153,6 @@ public:
     UFUNCTION(BlueprintPure) bool IsInsideCharacterReadabilityArea(FVector Position,float Padding=1)const;
     UFUNCTION(BlueprintPure,Category="剑灵|待机避让") bool IsInsideCharacterScreenArea(FVector Position)const;
     FBox2D GetCharacterScreenBounds(class APlayerController* PC)const;
-    static FVector2D KeepNameplateOutside(const FVector2D& Position,const FVector2D& Size,const FBox2D& Protected);
-    static FVector2D PlaceNameplate(const FVector2D& Position,const FVector2D& Size,const FBox2D& Character,const FBox2D& Panel,const FVector2D& Viewport);
     static bool ShouldContinueCombo(ELiveWeaponType Type,int32 Hits,float Chance,int32 Maximum,FRandomStream& Random);
     void GetPresentationSamples(TArray<FLiveWeaponLabelSample>& Out)const;
     const FLiveWeaponRoster& GetRoster()const{return Roster;}

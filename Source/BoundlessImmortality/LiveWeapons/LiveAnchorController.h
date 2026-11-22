@@ -11,16 +11,12 @@ class BOUNDLESSIMMORTALITY_API ALiveAnchorController : public APlayerController
     GENERATED_BODY()
 public:
     ALiveAnchorController();
-    UFUNCTION(Exec) void LiveAudience(int32 Count);
-    UFUNCTION(Exec) void LiveComment(const FString& Id,const FString& Text);
     UFUNCTION(Exec) void LiveSpawnMonsters(int32 Count);
-    UFUNCTION(Exec) void LiveSkill(const FString& Id,FName Skill);
-    UFUNCTION(BlueprintCallable) bool ExecuteGMAction(FName Action);
     virtual void PlayerTick(float DeltaSeconds)override;
     bool IsUsingGameplayCamera()const;
     /**
      * Mouse-wheel zoom as a share of the game framing (1): the pawn camera's boom length, or the orthographic width.
-     * Scrolling up pulls the camera in (each notch ×0.85) down to MinZoom, to look at effects up close.
+     * Scrolling up pulls the camera in (each notch x0.85) down to MinZoom, to look at effects up close.
      */
     UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="Camera",meta=(ClampMin="0.05",ClampMax="1")) float MinZoom=.15f;
     UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="Camera",meta=(ClampMin="1",ClampMax="4")) float MaxZoom=1.5f;

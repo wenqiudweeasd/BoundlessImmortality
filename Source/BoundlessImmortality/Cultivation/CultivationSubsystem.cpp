@@ -1,7 +1,6 @@
 #include "CultivationSubsystem.h"
 #include "CultivationRules.h"
 #include "CultivationHealthComponent.h"
-#include "Frontend/InkDamageFeedbackComponent.h"
 #include "CultivationGameplayComponent.h"
 #include "GameFramework/Pawn.h"
 #include "Engine/World.h"
@@ -47,9 +46,6 @@ double UCultivationSubsystem::UtcNow(){return double(FDateTime::UtcNow().GetTick
 void UCultivationSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
     Super::Initialize(Collection);
-#if !UE_BUILD_SHIPPING
-    if(FParse::Param(FCommandLine::Get(),TEXT("WulingPrototype"))&&FParse::Param(FCommandLine::Get(),TEXT("GWLocalTest")))SetWulingAuthorityEnabled(true);
-#endif
     bInitialized=true;LoadRecords();
 }
 void UCultivationSubsystem::Deinitialize(){SaveRecords();AnchorPawn.Reset();bInitialized=false;Super::Deinitialize();}
@@ -84,9 +80,6 @@ void UCultivationSubsystem::SetAnchor(APawn* Pawn,const FString& Id,const FStrin
     {
         auto* Health=NewObject<UCultivationHealthComponent>(Pawn,TEXT("CultivationHealth"));Pawn->AddInstanceComponent(Health);Health->RegisterComponent();
     }
-    auto* Feedback=Pawn->FindComponentByClass<UInkDamageFeedbackComponent>();
-    if(!Feedback){Feedback=NewObject<UInkDamageFeedbackComponent>(Pawn,TEXT("InkDamageFeedback"));Pawn->AddInstanceComponent(Feedback);Feedback->RegisterComponent();}
-    Feedback->Observe(Pawn->FindComponentByClass<UCultivationHealthComponent>());
 }
 UCultivationHealthComponent* UCultivationSubsystem::GetAnchorHealth()const{return AnchorPawn.IsValid()?AnchorPawn->FindComponentByClass<UCultivationHealthComponent>():nullptr;}
 bool UCultivationSubsystem::RegisterParticipant(const FString& Id,const FString& Name,const FString& Avatar,bool Anchor)

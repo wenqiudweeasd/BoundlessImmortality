@@ -11,9 +11,9 @@ public class BoundlessImmortality : ModuleRules
 		bUseUnity = false;
 		PrivateIncludePaths.Add(ModuleDirectory);
 	
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "Niagara", "LiveInteraction", "UMG" });
+		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "Niagara", "UMG" });
 
-		PrivateDependencyModuleNames.AddRange(new string[] { "Json", "JsonUtilities", "AssetRegistry", "HTTP", "NavigationSystem", "RenderCore", "RHI", "Slate", "SlateCore", "NiagaraUIRenderer" });
+		PrivateDependencyModuleNames.AddRange(new string[] { "Json", "JsonUtilities", "AssetRegistry", "NavigationSystem", "RenderCore", "RHI", "Slate", "SlateCore" });
 
 		// Uncomment if you are using Slate UI
 		// PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });

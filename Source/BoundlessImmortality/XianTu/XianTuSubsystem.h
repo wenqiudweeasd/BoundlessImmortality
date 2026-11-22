@@ -3,7 +3,6 @@
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "Tickable.h"
 #include "XianTu/XianTuTypes.h"
-#include "LiveInteractionSubsystem.h"
 #include "XianTu/XianTuCatalog.h"
 #include "XianTuSubsystem.generated.h"
 class ALiveMonster;
@@ -125,6 +124,10 @@ public:
     int32 DebugGetForcedRoll()const{return ForcedRoll;}
     /** Tests: every following 七星挡劫 roll uses this value (0 holds whenever the chance is above 0, 10000 always breaks); negative rolls at random. */
     void DebugForceWardRoll(int32 Roll){ForcedWardRoll=Roll<0?-1:FMath::Min(Roll,10000);}
+    /** Registers a local helper assist during an active tribulation trial. */
+    bool AddTribulationAssist(const FString& Id,const FString& Name);
+    /** Registers a representative response during an active spirit-vein race window. */
+    bool RecordRaceResponse(const FString& Id);
     int32 DebugAssists(int32 Count);
     int32 DebugResponses();
 
@@ -141,7 +144,6 @@ private:
     double LastPersonalHit=-100,EchoSupportReady=0,GuardReady=0;
     struct FDelayed{TWeakObjectPtr<ALiveMonster> Target;float Amount=0;double At=0;FString Owner;};
     TArray<FDelayed> Delayed;
-    TWeakObjectPtr<ULiveInteractionSubsystem> Interaction;
 
     void Touch(){++Revision;bDirty=true;}
     void Notify(const FText& Text,int32 Kind=0,const FText& Title=FText(),const TArray<FXianTuReward>& Rewards={});
@@ -238,6 +240,4 @@ private:
     void RefillBoard();
 
     void TickMethods(float RealDelta);
-
-    UFUNCTION() void HandleComment(const FLiveComment& Comment);
 };

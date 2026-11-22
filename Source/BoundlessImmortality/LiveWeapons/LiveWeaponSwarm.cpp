@@ -1,5 +1,4 @@
 #include "LiveWeaponSwarm.h"
-#include "LiveTitleEffectsComponent.h"
 #include "SpecialSwords/LiveSpecialSwordComponent.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/AssetData.h"
@@ -73,7 +72,6 @@ void ALiveWeaponSwarm::MigrateLegacySpatialRanges(const ALiveWeaponSwarm* Defaul
 ALiveWeaponSwarm::ALiveWeaponSwarm()
 {
     PrimaryActorTick.bCanEverTick=true;SetRootComponent(CreateDefaultSubobject<USceneComponent>(TEXT("Root")));
-    TitleEffects=CreateDefaultSubobject<ULiveTitleEffectsComponent>(TEXT("TitleEffects"));
     SpecialSwords=CreateDefaultSubobject<ULiveSpecialSwordComponent>(TEXT("SpecialSwords"));
     SetActorEnableCollision(false);
     static ConstructorHelpers::FObjectFinder<UStaticMesh> Cube(TEXT("/Engine/BasicShapes/Cube.Cube"));
@@ -278,25 +276,6 @@ FBox2D ALiveWeaponSwarm::GetCharacterScreenBounds(APlayerController* PC)const
     const FVector Center=Anchor->GetActorLocation();
     for(int X:{-1,1})for(int Y:{-1,1})for(int Z:{-1,1}){FVector2D P;if(PC->ProjectWorldLocationToScreen(Center+Extent*FVector(X,Y,Z),P,true))Bounds+=P;}
     return Bounds.bIsValid?Bounds.ExpandBy(12):Bounds;
-}
-FVector2D ALiveWeaponSwarm::KeepNameplateOutside(const FVector2D& Position,const FVector2D& Size,const FBox2D& Protected)
-{
-    if(!Protected.bIsValid||!FBox2D(Position,Position+Size).Intersect(Protected))return Position;
-    const FVector2D Candidates[]={FVector2D(Protected.Min.X-Size.X-4,Position.Y),FVector2D(Protected.Max.X+4,Position.Y),FVector2D(Position.X,Protected.Min.Y-Size.Y-4),FVector2D(Position.X,Protected.Max.Y+4)};
-    FVector2D Best=Candidates[0];for(auto P:Candidates)if(FVector2D::DistSquared(P,Position)<FVector2D::DistSquared(Best,Position))Best=P;return Best;
-}
-FVector2D ALiveWeaponSwarm::PlaceNameplate(const FVector2D& Position,const FVector2D& Size,const FBox2D& Character,const FBox2D& Panel,const FVector2D& Viewport)
-{
-    auto Clamp=[&](FVector2D P){return FVector2D(FMath::Clamp(P.X,0.,FMath::Max(0.,Viewport.X-Size.X)),FMath::Clamp(P.Y,0.,FMath::Max(0.,Viewport.Y-Size.Y)));};
-    const FVector2D Origin=Clamp(Position);auto Clear=[&](FVector2D P){const FBox2D Rect(P,P+Size);return (!Character.bIsValid||!Rect.Intersect(Character))&&(!Panel.bIsValid||!Rect.Intersect(Panel));};
-    if(Clear(Origin))return Origin;
-    FVector2D Best=Origin;double Distance=MAX_dbl;
-    for(const FBox2D& Area:{Character,Panel})if(Area.bIsValid)
-    {
-        const FVector2D Candidates[]={FVector2D(Area.Min.X-Size.X-4,Origin.Y),FVector2D(Area.Max.X+4,Origin.Y),FVector2D(Origin.X,Area.Min.Y-Size.Y-4),FVector2D(Origin.X,Area.Max.Y+4)};
-        for(auto P:Candidates){P=Clamp(P);const double D=FVector2D::DistSquared(P,Origin);if(Clear(P)&&D<Distance){Distance=D;Best=P;}}
-    }
-    return Best;
 }
 ULiveWeaponDefinition* ALiveWeaponSwarm::Definition(ELiveWeaponType Type)const{for(ULiveWeaponDefinition* Def:Definitions)if(Def&&Def->WeaponType==Type)return Def;return nullptr;}
 bool ALiveWeaponSwarm::IsCurrent(FLiveWeaponHandle H)const{return Roster.GetStates().IsValidIndex(H.Index)&&Roster.GetStates()[H.Index].Handle==H&&Roster.GetStates()[H.Index].bParticipating;}

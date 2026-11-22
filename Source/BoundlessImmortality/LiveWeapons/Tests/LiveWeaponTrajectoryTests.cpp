@@ -13,12 +13,7 @@ bool FLiveSpatialBezierTest::RunTest(const FString&)
     const FVector A=P.Position(P.Duration*.25f)-Start,B=P.Position(P.Duration*.5f)-Start,C=P.Position(P.Duration*.75f)-Start;
     TestTrue(TEXT("flight is spatial rather than a tilted flat arc"),FMath::Abs(FVector::DotProduct(FVector::CrossProduct(A,B),C))>10000);
     for(int I=0;I<=128;++I){const float T=P.Duration*I/128;TestTrue(TEXT("spatial acceleration bounded"),P.Acceleration(T).Size()<12001);TestTrue(TEXT("spatial speed bounded"),P.Velocity(T).Size()<2604);}
-    const FBox2D Body(FVector2D(100,100),FVector2D(200,300));
-    const FVector2D Plate=ALiveWeaponSwarm::KeepNameplateOutside(FVector2D(140,180),FVector2D(90,17),Body);
-    TestFalse(TEXT("name and avatar remain present without covering the character"),FBox2D(Plate,Plate+FVector2D(90,17)).Intersect(Body));
-    const FBox2D Character(FVector2D(120,300),FVector2D(250,480)),Panel(FVector2D(36,18),FVector2D(382,420));
-    const FVector2D Safe=ALiveWeaponSwarm::PlaceNameplate(FVector2D(300,200),FVector2D(90,17),Character,Panel,FVector2D(400,700));const FBox2D Rect(Safe,Safe+FVector2D(90,17));
-    TestTrue(TEXT("portrait viewport never pushes a name offscreen to escape the GM panel"),Safe.X>=0&&Safe.Y>=0&&Rect.Max.X<=400&&Rect.Max.Y<=700&&!Rect.Intersect(Character)&&!Rect.Intersect(Panel));return true;
+    return true;
 }
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLiveBezierDynamicsTest,"BoundlessImmortality.LiveWeapons.BezierDynamics",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
 bool FLiveBezierDynamicsTest::RunTest(const FString&)

@@ -18,10 +18,6 @@ class BOUNDLESSIMMORTALITYEDITOR_API UInkCultivationEditorLibrary : public UBlue
 {
     GENERATED_BODY()
 public:
-    UFUNCTION(BlueprintCallable,Category="Ink UI|Editor") static UNiagaraSystem* CreateSignInChestSystem(const FString& PackagePath,UMaterialInterface* Material);
-    UFUNCTION(BlueprintCallable,Category="Ink UI|Editor") static UNiagaraSystem* CreateTitleSystem(const FString& PackagePath,UMaterialInterface* Material);
-    /** CPU NiagaraUI motion. Kinds 0..3: title effects; 4: character slot borders; 5: dantian. */
-    UFUNCTION(BlueprintCallable,Category="Ink UI|Editor") static UNiagaraSystem* CreateTitleParticleSystem(const FString& PackagePath,UMaterialInterface* Material,int32 Kind);
     UFUNCTION(BlueprintCallable, Category="Qi Cultivation|Editor")
     static void SetLevelPreviewRealtime(bool Enabled);
     UFUNCTION(BlueprintCallable, Category="Qi Cultivation|Editor")

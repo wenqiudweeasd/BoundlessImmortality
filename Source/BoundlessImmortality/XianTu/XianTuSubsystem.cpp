@@ -10,7 +10,6 @@
 #include "LiveWeapons/SpecialSwords/LiveSpecialSword.h"
 #include "LiveWeapons/SpecialSwords/LiveSpecialSwordComponent.h"
 #include "LiveWeapons/SpecialSwords/LiveSwordVfx.h"
-#include "Frontend/InkMenuDirector.h"
 #include "CultivationGameplayComponent.h"
 #include "JsonObjectConverter.h"
 #include "Misc/FileHelper.h"
@@ -34,24 +33,20 @@ namespace
     int32 StageKind(FName Route,int32 Stage){if(Stage>=3)return 2;const bool bGather=Route==TEXT("gather");return (Stage==1)!=bGather?0:1;}
     const TCHAR* OpponentNames[]={TEXT("云栖剑阁"),TEXT("赤霄山门"),TEXT("落星宗"),TEXT("寒潭剑宗"),TEXT("紫微书院"),TEXT("玄霜武灵"),TEXT("青鸾阁"),TEXT("天枢观")};
     const TCHAR* SellerNames[]={TEXT("坊市·白鹿"),TEXT("坊市·青竹"),TEXT("坊市·老秦"),TEXT("坊市·苏掌柜"),TEXT("坊市·药童"),TEXT("坊市·铁匠")};
-    bool IsResponseWord(const FString& C){return C.Contains(TEXT("护阵"))||C.Contains(TEXT("破障"))||C.Contains(TEXT("响应"))||C.Contains(TEXT("共修"))||C.StartsWith(TEXT("选"));}
     int32 Bits(int32 V){int32 N=0;while(V){N+=V&1;V>>=1;}return N;}
 }
 
 void UXianTuSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
     Collection.InitializeDependency<UCultivationSubsystem>();
-    Collection.InitializeDependency<ULiveInteractionSubsystem>();
     Super::Initialize(Collection);
     Load();
-    if(auto* I=GetGameInstance()->GetSubsystem<ULiveInteractionSubsystem>()){Interaction=I;I->OnComment.AddDynamic(this,&ThisClass::HandleComment);}
     if(UCultivationSubsystem* C=Cultivation())RealmAdvancedHandle=C->OnRealmAdvanced.AddUObject(this,&ThisClass::HandleRealmAdvanced);
     bInitialized=true;
 }
 
 void UXianTuSubsystem::Deinitialize()
 {
-    if(auto* I=Interaction.Get())I->OnComment.RemoveDynamic(this,&ThisClass::HandleComment);
     if(UCultivationSubsystem* C=Cultivation())C->OnRealmAdvanced.Remove(RealmAdvancedHandle);
     ClearSpawned();
     if(bDirty)Save();
@@ -82,7 +77,6 @@ bool UXianTuSubsystem::InGameplay()const
 {
     const UCultivationSubsystem* C=Cultivation();const UCultivationHealthComponent* H=C?C->GetAnchorHealth():nullptr;
     if(!H||H->bDead||!H->GetWorld()||!H->GetWorld()->IsGameWorld())return false;
-    for(TActorIterator<AInkMenuDirector> It(H->GetWorld());It;++It)if(It->bMenuActive)return false;
     return true;
 }
 
@@ -264,7 +258,6 @@ ALiveMonster* UXianTuSubsystem::SpawnMonster(float Health,float Attack,float Int
 {
     APawn* Pawn=AnchorPawn();UWorld* World=Pawn?Pawn->GetWorld():nullptr;if(!World)return nullptr;
     TSubclassOf<ALiveMonster> Class=ALiveMonster::StaticClass();
-    for(TActorIterator<AInkMenuDirector> It(World);It;++It)if(It->EncounterMonsterClass){Class=It->EncounterMonsterClass;break;}
     const FVector Origin=Pawn->GetActorLocation();
     FCollisionQueryParams Query(SCENE_QUERY_STAT(XianTuSpawnFloor),false,Pawn);
     for(int32 Attempt=0;Attempt<24;++Attempt)
@@ -1063,52 +1056,36 @@ void UXianTuSubsystem::TickMethods(float RealDelta)
     else if(!bLow&&Buffs->GetStacks(TEXT("MethodGuardLow"),TEXT("method")))Buffs->Remove(TEXT("MethodGuardLow"),TEXT("method"));
 }
 
-// ------------------------------------------------------------------ audience
+// ------------------------------------------------------------------ local assist & race responses
 
-void UXianTuSubsystem::HandleComment(const FLiveComment& Comment)
+bool UXianTuSubsystem::AddTribulationAssist(const FString& Id,const FString& Name)
 {
-    const FString Content=Comment.Content.TrimStartAndEnd();
-    const ULiveInteractionSubsystem* I=Interaction.Get();
-    const FString Id=I?I->GetScopedUserId(Comment.UserId):Comment.UserId;
     const UCultivationSubsystem* C=Cultivation();
-    if(C&&Id==C->GetAnchorId())return;
+    if(Id.IsEmpty()||(C&&Id==C->GetAnchorId()))return false;
     FXianTuTribulation& T=State->Trib;
-    if(Content.Contains(TEXT("助力")))
+    if(T.State==EXianTuTribState::Prepare)
     {
-        if(T.State==EXianTuTribState::Prepare)Notify(FText::Format(LOCTEXT("AssistEarly","{0}：天劫尚未开始，稍后再助力"),FText::FromString(Comment.Nickname)));
-        else if(T.State==EXianTuTribState::Trial)
-        {
-            if(T.Assists.Contains(Id))return;
-            T.Assists.Add(Id);T.AssistNames.Add(Comment.Nickname);
-            T.Probability=TribulationProbability(T.Assists.Num());
-            // The viewer's sword spirit turns to guard the anchor for the rest of the trial.
-            if(ALiveWeaponSwarm* S=Swarm())S->AcquireAlertLease(Id,T.AttemptId,UCultivationSubsystem::UtcNow()+(TribTrial-T.Elapsed)/FMath::Max(.1f,State->TimeScale)+1.0,1);
-            Notify(T.Assists.Num()>50?FText::Format(LOCTEXT("AssistCap","{0} 助力已收到，概率已满"),FText::FromString(Comment.Nickname))
-                :FText::Format(LOCTEXT("Assist","{0} 助力 · 成功率 {1}%"),FText::FromString(Comment.Nickname),FText::AsNumber(T.Probability/100)));
-            Touch();
-        }
-        return;
+        Notify(FText::Format(LOCTEXT("AssistEarly","{0}：天劫尚未开始，稍后再助力"),FText::FromString(Name)));
+        return false;
     }
+    if(T.State!=EXianTuTribState::Trial||T.Assists.Contains(Id))return false;
+    T.Assists.Add(Id);T.AssistNames.Add(Name);
+    T.Probability=TribulationProbability(T.Assists.Num());
+    if(ALiveWeaponSwarm* S=Swarm())S->AcquireAlertLease(Id,T.AttemptId,UCultivationSubsystem::UtcNow()+(TribTrial-T.Elapsed)/FMath::Max(.1f,State->TimeScale)+1.0,1);
+    Notify(T.Assists.Num()>50?FText::Format(LOCTEXT("AssistCap","{0} 助力已收到，概率已满"),FText::FromString(Name))
+        :FText::Format(LOCTEXT("Assist","{0} 助力 · 成功率 {1}%"),FText::FromString(Name),FText::AsNumber(T.Probability/100)));
+    Touch();
+    return true;
+}
+
+bool UXianTuSubsystem::RecordRaceResponse(const FString& Id)
+{
     FXianTuRace& R=State->Race;int32 Window=0;double Remaining=0;
-    if(R.State==EXianTuRaceState::Running&&IsResponseWord(Content)&&R.Representatives.Contains(Id)&&ResponseWindow(Window,Remaining))
-    {
-        int32& Mask=R.Responses.FindOrAdd(Id);
-        if(!(Mask&(1<<Window))){Mask|=1<<Window;Touch();}
-        return;
-    }
-    auto& G=State->Guild;
-    if(!G.bCreated)return;
-    FXianTuMember* M=G.Members.FindByPredicate([&](const FXianTuMember& X){return X.Id==Id;});
-    if(Content==TEXT("退出武灵")&&M&&M->bFormal)
-    {
-        M->bFormal=false;M->LeftUtc=State->SimNow;M->CooldownUntil=State->SimNow+86400;
-        Record(TEXT("成员"),M->Name+TEXT(" 退出武灵（24小时内不能加入新武灵，仍可临时助战）"));Touch();
-    }
-    else if(Content==TEXT("加入")&&M&&!M->bFormal)
-    {
-        if(State->SimNow<M->CooldownUntil)return;
-        M->bFormal=true;M->JoinedUtc=State->SimNow;Record(TEXT("成员"),M->Name+TEXT(" 重新加入武灵"));Touch();
-    }
+    if(R.State!=EXianTuRaceState::Running||!R.Representatives.Contains(Id)||!ResponseWindow(Window,Remaining))return false;
+    int32& Mask=R.Responses.FindOrAdd(Id);
+    if(Mask&(1<<Window))return false;
+    Mask|=1<<Window;Touch();
+    return true;
 }
 
 // ------------------------------------------------------------------ commands
@@ -1349,26 +1326,23 @@ void UXianTuSubsystem::DebugRestoreTribulation(const TMap<FString,int32>& Failur
 
 int32 UXianTuSubsystem::DebugAssists(int32 Count)
 {
-    ULiveInteractionSubsystem* I=Interaction.Get();const ALiveWeaponSwarm* S=Swarm();if(!I||!S)return 0;
+    const ALiveWeaponSwarm* S=Swarm();if(!S)return 0;
     int32 Sent=0;
     for(const FLiveWeaponState& P:S->GetRoster().GetStates())
     {
         if(Sent>=Count)break;
         if(!P.bParticipating||P.bPersonalSword||State->Trib.Assists.Contains(P.Profile.ParticipantId))continue;
-        FString Raw=P.Profile.ParticipantId;Raw.RemoveFromStart(TEXT("local:"));
-        if(I->SimulateComment(Raw,P.Profile.DisplayName,TEXT("助力")))++Sent;
+        if(AddTribulationAssist(P.Profile.ParticipantId,P.Profile.DisplayName))++Sent;
     }
     return Sent;
 }
 
 int32 UXianTuSubsystem::DebugResponses()
 {
-    ULiveInteractionSubsystem* I=Interaction.Get();if(!I)return 0;
     int32 Sent=0;const FXianTuRace& R=State->Race;
     for(int32 K=0;K<R.Representatives.Num();++K)
     {
-        FString Raw=R.Representatives[K];Raw.RemoveFromStart(TEXT("local:"));
-        if(I->SimulateComment(Raw,R.RepresentativeNames.IsValidIndex(K)?R.RepresentativeNames[K]:Raw,TEXT("护阵")))++Sent;
+        if(RecordRaceResponse(R.Representatives[K]))++Sent;
     }
     return Sent;
 }
