@@ -305,6 +305,7 @@ void SInkHudScreen::Construct(const FArguments& InArgs)
                 const UXianTuSubsystem* X=M().XianTu.Get();return X&&X->TodayFortune()==XianTuCatalog::EFortune::None;
             },.31f)]
             +SHorizontalBox::Slot().AutoWidth().Padding(FMargin(3.f,0.f))[EntryArt(Art::ItemIcon(TEXT("gold_cloud")),LOCTEXT("XianDao","仙道殿"),TEXT("XianDao"),TEXT("Hud.XianDao"),nullptr,.38f)]
+            +SHorizontalBox::Slot().AutoWidth().Padding(FMargin(3.f,0.f))[EntryArt(Art::ItemIcon(TEXT("swords")),LOCTEXT("WanJian","万剑仙宗"),TEXT("WanJian"),TEXT("Hud.WanJian"),nullptr,.45f)]
         ]
         +SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Bottom).Padding(FMargin(0.f,0.f,0.f,214.f))
         [

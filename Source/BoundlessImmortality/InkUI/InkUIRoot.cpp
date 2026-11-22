@@ -1,6 +1,7 @@
 #include "InkUI/InkUIRoot.h"
 #include "InkUI/InkUIScreens.h"
 #include "InkUI/InkUIScreensXianTu.h"
+#include "WanJian/WanJianScreen.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Widgets/SOverlay.h"
 #include "Widgets/Layout/SSafeZone.h"
@@ -133,6 +134,7 @@ TSharedPtr<SInkScreen> SInkUIRoot::CreateScreen(FName Route)
     if(Route==TEXT("ItemSources"))return SNew(SInkItemSourcesScreen).Root(Self);
     if(Route==TEXT("GuildConstruction"))return SNew(SInkGuildBuildScreen).Root(Self);
     if(Route==TEXT("EquipmentFabao"))return SNew(SInkGearScreen).Root(Self);
+    if(Route==TEXT("WanJian"))return SNew(SInkWanJianScreen).Root(Self);
     return nullptr;
 }
 
