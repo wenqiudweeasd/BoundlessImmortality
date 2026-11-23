@@ -8,7 +8,7 @@
  * attributes and 5% of their health as attack), splits into chasing clones, plunges for eight ground waves. Whatever it
  * strikes burns with violet fire for a while (a look only, no damage over time).
  */
-UCLASS(NotBlueprintable)
+UCLASS()
 class BOUNDLESSIMMORTALITY_API ALiveSwordSoulEater : public ALiveSpecialSword
 {
     GENERATED_BODY()

@@ -24,7 +24,7 @@ struct FLiveSwordShot;
  * Skill rule shared by every form: whenever a skill is off cooldown it casts a random ready one; after a
  * cast it has a 50% chance to strike normally and a 50% chance to chain straight into another ready skill.
  */
-UCLASS(Abstract,NotBlueprintable)
+UCLASS(Abstract)
 class BOUNDLESSIMMORTALITY_API ALiveSpecialSword : public AActor
 {
     GENERATED_BODY()
